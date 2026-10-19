@@ -1,0 +1,65 @@
+"""Modellen maken uit een naam ('provider:model'), met geduld bij rate limits. Werkt voor elke provider."""
+from __future__ import annotations
+
+import asyncio
+import os
+import re
+from typing import Callable
+
+from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.models import Model
+from pydantic_ai.models.wrapper import WrapperModel
+
+TIJDELIJK = {429, 500, 502, 503, 504}
+
+
+class LimietBereikt(RuntimeError):
+    """Het model vraagt langer te wachten dan zinvol is (bijvoorbeeld een daglimiet)."""
+
+
+def wachttijd(e: ModelHTTPError, poging: int) -> float:
+    """Retry-After-header, anders een hint in de body ('retry in 20s'), anders exponentieel."""
+    if e.headers and (ra := e.headers.get("retry-after")):
+        try:
+            return float(ra)
+        except ValueError:
+            pass
+    if m := re.search(r"retry in ([\d.]+)\s*s|retryDelay['\"]?:\s*['\"](\d+(?:\.\d+)?)s", str(e.body)):
+        return float(m.group(1) or m.group(2)) + 1
+    return min(60.0, 2.0 ** poging)
+
+
+class GeduldigModel(WrapperModel):
+    """Probeert een modelverzoek opnieuw bij tijdelijke fouten (rate limit, overbelasting)."""
+
+    def __init__(self, wrapped, *, max_pogingen: int = 6, max_wacht: float = 120,
+                 bij_wachten: Callable[[str], None] | None = None):
+        super().__init__(wrapped)
+        self.max_pogingen = max_pogingen
+        self.max_wacht = max_wacht
+        self.bij_wachten = bij_wachten
+
+    async def request(self, messages, model_settings, model_request_parameters):
+        for poging in range(self.max_pogingen):
+            try:
+                return await self.wrapped.request(messages, model_settings, model_request_parameters)
+            except ModelHTTPError as e:
+                if e.status_code not in TIJDELIJK or poging == self.max_pogingen - 1:
+                    raise
+                t = wachttijd(e, poging)
+                if t > self.max_wacht:
+                    raise LimietBereikt(
+                        f"{self.model_name} vraagt {t / 3600:.1f} uur te wachten (waarschijnlijk een daglimiet). "
+                        "Kies een ander model in project.yaml of probeer het later opnieuw.") from e
+                if self.bij_wachten:
+                    self.bij_wachten(f"{self.model_name}: {e.status_code}, opnieuw over {t:.0f}s")
+                await asyncio.sleep(t)
+        raise AssertionError("onbereikbaar")
+
+
+def maak_model(naam: str | Model | None, *, bij_wachten: Callable[[str], None] | None = None) -> Model | None:
+    if naam is None or isinstance(naam, Model):
+        return naam
+    if naam.startswith("ollama:"):
+        os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    return GeduldigModel(naam, bij_wachten=bij_wachten)

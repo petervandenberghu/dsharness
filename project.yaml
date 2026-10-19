@@ -1,0 +1,13 @@
+project: huizen-demo
+doel: Voorspel de verkoopprijs van een huis (in duizenden euro's).
+target: prijs_k
+taak: regressie
+data: oefenset:huizen          # of een pad naar een csv, relatief aan dit bestand
+
+# local_only: alle modellen moeten lokaal draaien (ollama, vllm).
+# cloud_allowed: ook cloudmodellen. De agents krijgen samenvattingen te zien, geen ruwe rijen.
+data_policy: cloud_allowed
+
+modellen:
+  data_scout: google:gemini-flash-latest   # lokaal: ollama:gemma4:12b
+  reviewer: google:gemini-flash-latest     # leeg laten = alleen de vaste regels

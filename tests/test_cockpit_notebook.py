@@ -1,4 +1,4 @@
-"""Speelt de demo in 00_cockpit.ipynb helemaal na: PO-vraag, akkoord, overrulen."""
+"""Speelt de demo in examples/cockpit_demo.ipynb helemaal na: PO-vraag, akkoord, overrulen."""
 import os
 from pathlib import Path
 
@@ -6,7 +6,7 @@ import nbformat
 
 from kernelsim import KernelSim
 
-NB = Path(__file__).resolve().parents[1] / "00_cockpit.ipynb"
+NB = Path(__file__).resolve().parents[1] / "examples" / "cockpit_demo.ipynb"
 
 
 def test_demo_route(tmp_path):

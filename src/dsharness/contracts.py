@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from .acties import Actie
+
 
 class Bron(BaseModel):
     titel: str
@@ -33,6 +35,7 @@ class Voorstel(BaseModel):
     bronnen: list[Bron] = Field(min_length=1)
     alternatief: str | None = None
     review: ReviewOordeel
+    spec: Actie | None = Field(None, description="De uitvoerbare actie achter dit voorstel")
 
 
 Keuze = Literal["akkoord", "aanpassen", "afwijzen", "overrulen"]

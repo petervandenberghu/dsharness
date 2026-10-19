@@ -183,8 +183,23 @@ class Cockpit:
 
     async def vraag_po(self, vraag: str, context: str = "") -> str:
         fut = asyncio.get_running_loop().create_future()
-        self._voeg_toe(_Vraag(vraag, context, lambda t: fut.done() or fut.set_result(t)).widget)
+
+        def klaar(antwoord: str) -> None:
+            self.log.schrijf_vraag(vraag, antwoord)
+            if not fut.done():
+                fut.set_result(antwoord)
+
+        self._voeg_toe(_Vraag(vraag, context, klaar).widget)
         return await fut
+
+    def toon_rapport(self, rapport) -> None:
+        e = html.escape
+        items = "".join(
+            f"<li><b>{e(b.kolom or 'algemeen')}</b> ({e(b.soort)}): {e(b.beschrijving)}"
+            f"<div class='dsh-meta'>{e(b.bewijs)}</div></li>" for b in rapport.bevindingen)
+        self._voeg_toe(w.HTML(CSS + f"""<div class="dsh-kaart" style="--dsh-k:#56627A">
+          <div class="dsh-meta">Verkenningsrapport · {len(rapport.voorstellen)} voorstel(len) volgen</div>
+          <h3>{e(rapport.samenvatting)}</h3><ul style="margin:0;padding-left:18px">{items}</ul></div>"""))
 
     def _los_op(self, fut: asyncio.Future, v: Voorstel, b: Besluit) -> None:
         self.log.schrijf(v, b)

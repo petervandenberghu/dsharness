@@ -9,6 +9,9 @@ dependencies = [
     "ipykernel>=6.29",
     "pandas>=2.2",
     "matplotlib>=3.8",
+    "pydantic-ai-slim[google,openai]>=2.57.0",
+    "pyyaml>=6.0.3",
+    "scikit-learn>=1.9.1",
 ]
 
 [dependency-groups]
