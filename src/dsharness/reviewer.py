@@ -11,12 +11,13 @@ import pandas as pd
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
-from .acties import (F4_TYPES, Afkappen, Imputeer, LogTransformatie, NAIndicator, OneHot, OnmogelijkNaarNA, Schaal, Split,
+from .acties import (F4_TYPES, F5_TYPES, Afkappen, CVOpzet, Experiment, KiesModel, Imputeer, LogTransformatie, NAIndicator, OneHot, OnmogelijkNaarNA, Schaal, Split,
                      TargetEncoding, VerwijderDubbelen, VerwijderKolom, VerwijderZonderTarget)
 from .bronnen import BronSleutel, bron, catalogus_tekst
 from .contracts import ReviewOordeel
 from .data import DataLaag
 from .modellen import maak_model
+from .lab import HOGER_IS_BETER, LabFout
 from .prep_plan import EENVOUDIG, PrepPlan, PrepPlanFout
 from .rapport import Bevinding, ConceptVoorstel
 
@@ -39,6 +40,7 @@ class ReviewContext:
     po_vragen: list[tuple[str, str]] = field(default_factory=list)  # (vraag, antwoord), echt gesteld
     profielen: dict[str, Any] = field(default_factory=dict)  # F3: kolom → KolomProfiel
     plan: PrepPlan | None = None  # F4: het plan tot nu toe
+    lab: Any = None  # F5: experimenten en resultaten
 
     def po_gevraagd_over(self, kolom: str) -> bool:
         return any(kolom.lower() in (v + " " + a).lower() for v, a in self.po_vragen)
@@ -110,6 +112,8 @@ def regels(c: ConceptVoorstel, ctx: ReviewContext) -> list[Uitkomst]:
             u += _split_regels(a, ctx, df)
     if a.type in F4_TYPES:
         u += _f4_regels(a, ctx, df)
+    if a.type in F5_TYPES:
+        u += _f5_regels(a, ctx, df)
     return u or [Uitkomst("goed", "Geen bezwaren gevonden in de regels.")]
 
 
@@ -271,3 +275,64 @@ def combineer(uitkomsten: list[Uitkomst]) -> ReviewOordeel:
     teksten = list(dict.fromkeys(x.tekst for x in relevant))
     sleutels = list(dict.fromkeys(s for x in relevant for s in x.bronnen))
     return ReviewOordeel(oordeel=eind, toelichting=" ".join(teksten), bronnen=[bron(s) for s in sleutels])
+
+
+def _f5_regels(a, ctx: ReviewContext, df: pd.DataFrame) -> list[Uitkomst]:
+    """F5: past de validatie bij de split, is de maat passend, en is de modelkeuze verdedigbaar?"""
+    lab = ctx.lab
+    if lab is None:
+        return [Uitkomst("fout", "Er is geen lab; F5 kan pas na F4.")]
+    try:
+        lab.valideer(a)
+    except LabFout as e:
+        return [Uitkomst("fout", str(e))]
+    u: list[Uitkomst] = []
+    m = minderheid(ctx)
+    match a:
+        case CVOpzet(methode=sc, folds=k, metriek=mt):
+            split = ctx.data.split_actie.methode if ctx.data.split_actie else None
+            nodig = {"groep": "groep", "tijd": "tijd"}.get(split)
+            if nodig and sc != nodig:
+                u.append(Uitkomst("fout", f"De split was per {split}. Valideer binnen train ook per {nodig}, anders lekt "
+                                          "informatie tussen de folds en lijkt het model beter dan het is.", ("cv", "kapoor")))
+            if sc in ("groep", "tijd") and not nodig:
+                u.append(Uitkomst("fout", f"Een {sc}-schema past niet bij een {split}e split: er is geen {sc}kolom vastgelegd.", ("cv",)))
+            if split == "gestratificeerd" and sc == "kfold":
+                u.append(Uitkomst("twijfel", "De target is scheef; stratified houdt de klassenverhouding gelijk in elke fold.", ("cv", "santos")))
+            if m is not None and m < .3 and mt == "accuracy":
+                u.append(Uitkomst("twijfel", f"De kleinste klasse is {m:.0%}. Accuracy beloont dan 'altijd de grootste klasse'. "
+                                             "Kies recall, f1, balanced_accuracy of roc_auc.", ("metrics", "santos")))
+            if lab.data.n_train / k < 10:
+                u.append(Uitkomst("twijfel", f"Met {lab.data.n_train} rijen en {k} folds heeft elke fold minder dan 10 rijen; "
+                                             "de scores worden onbetrouwbaar.", ("cv",)))
+            woorden = ("maat", "metriek", "evaluatie", "belangrijk", mt)
+            if not any(w in (v + " " + an).lower() for v, an in ctx.po_vragen for w in woorden):
+                u.append(Uitkomst("twijfel", "De evaluatiemaat is een businesskeuze. Vraag de PO welke fouten het zwaarst wegen "
+                                             "(bijv. een gemist geval tegenover een vals alarm).", ("metrics",)))
+        case Experiment(model=mod, gebalanceerd=g):
+            plan = lab.plan
+            if mod in ("lineair", "knn") and not any(isinstance(s, Schaal) for s in plan.stappen):
+                u.append(Uitkomst("twijfel", f"{mod} is gevoelig voor de schaal van features; de pipeline schaalt niet.", ("prep",)))
+            if g and m is not None and m >= .35:
+                u.append(Uitkomst("twijfel", f"De klassen zijn redelijk in balans ({m:.0%}); balanceren is niet nodig.", ("santos",)))
+            if len(lab.experimenten) >= 8:
+                u.append(Uitkomst("twijfel", f"Al {len(lab.experimenten)} experimenten: hoe meer je vergelijkt, hoe groter de kans "
+                                             "dat het beste model vooral geluk had op de validatie.", ("cawley",)))
+        case KiesModel(experiment=n):
+            r, beste, base = lab.resultaten[n], lab.beste(), lab.baseline()
+            hoger = HOGER_IS_BETER.get(lab.cv.metriek, True)
+            winst = lambda x, y: (x - y) if hoger else (y - x)  # noqa: E731
+            if r.model == "baseline":
+                u.append(Uitkomst("twijfel", "Het gekozen model is de baseline: geen enkel model voegt dan iets toe.", ("metrics",)))
+            elif base and winst(r.gemiddelde, base.gemiddelde) < r.sd:
+                u.append(Uitkomst("twijfel", f"De winst ten opzichte van de baseline ({winst(r.gemiddelde, base.gemiddelde):.3f}) is "
+                                             f"kleiner dan de spreiding over de folds ({r.sd:.3f}).", ("cawley",)))
+            if beste and beste.naam != n and winst(beste.gemiddelde, r.gemiddelde) > r.sd:
+                u.append(Uitkomst("twijfel", f"'{beste.naam}' scoort duidelijk beter ({beste.gemiddelde:.3f} tegen {r.gemiddelde:.3f}). "
+                                             "Onderbouw waarom je toch dit model kiest (bijv. eenvoud of uitlegbaarheid).", ("cawley",)))
+            kloof = winst(r.train, r.gemiddelde)
+            relatief = kloof / abs(r.gemiddelde) if lab.cv.metriek in ("rmse", "mae") and r.gemiddelde else kloof
+            if relatief > (.3 if lab.cv.metriek in ("rmse", "mae") else .15):
+                u.append(Uitkomst("twijfel", f"Groot verschil tussen train ({r.train:.3f}) en validatie ({r.gemiddelde:.3f}): "
+                                             "het model overfit waarschijnlijk. Overweeg meer regularisatie of een eenvoudiger model.", ("esl",)))
+    return u

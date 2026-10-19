@@ -4,7 +4,9 @@ Elke dataset heeft:
 - `valkuilen`: wat een goede verkenning moet vinden (ground truth voor evals);
 - `po_kennis`: wat een gesimuleerde PO per kolom weet;
 - `juiste_f1`: de juiste vaste regels en split (om F3 los te kunnen testen);
-- `na_mechanismen`: het echte NA-mechanisme per kolom na F2 (ground truth voor F3).
+- `na_mechanismen`: het echte NA-mechanisme per kolom na F2 (ground truth voor F3);
+- `juiste_prep`: een verdedigbaar F4-plan (om F5 los te kunnen testen);
+- `maat`: wat de PO zegt over welke fouten zwaar wegen (businesskennis voor F5).
 """
 from __future__ import annotations
 
@@ -13,7 +15,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .acties import OnmogelijkNaarNA, Split, VerwijderDubbelen, VerwijderZonderTarget
+from .acties import (Imputeer, NAIndicator, OneHot, OnmogelijkNaarNA, Schaal, Split, VerwijderDubbelen, VerwijderKolom,
+                     VerwijderZonderTarget)
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,13 @@ class Oefenset:
     juiste_split: str = "willekeurig"
     juiste_f1: list = field(default_factory=list)
     na_mechanismen: dict[str, str] = field(default_factory=dict)
+    juiste_prep: list = field(default_factory=list)
+    maat: str = ""
+
+    def __post_init__(self):
+        if self.maat:  # de gesimuleerde PO herkent vragen over de evaluatiemaat aan deze woorden
+            for woord in ("maat", "metriek", "evaluatie", "fouten", "weegt", "belangrijk"):
+                self.po_kennis.setdefault(woord, self.maat)
 
 
 def huizen(seed: int = 11) -> Oefenset:
@@ -67,6 +77,9 @@ def huizen(seed: int = 11) -> Oefenset:
         juiste_f1=[VerwijderDubbelen(), OnmogelijkNaarNA(kolom="oppervlakte", regel="<0"), VerwijderZonderTarget(),
                    Split(methode="willekeurig")],
         na_mechanismen={"kamers": "MCAR", "bouwjaar": "MAR", "oppervlakte": "MCAR"},
+        juiste_prep=[Imputeer(kolom="kamers", methode="mediaan"), Imputeer(kolom="bouwjaar", methode="knn"),
+                     Imputeer(kolom="oppervlakte", methode="mediaan"), OneHot(kolom="wijk"), Schaal()],
+        maat="Een gemiddelde fout van een paar tienduizend euro is acceptabel; grote missers zijn erg vervelend.",
     )
 
 
@@ -94,6 +107,9 @@ def klant(seed: int = 23) -> Oefenset:
         juiste_split="gestratificeerd",
         juiste_f1=[Split(methode="gestratificeerd")],
         na_mechanismen={"inkomen_k": "MNAR", "klachten": "MCAR"},
+        juiste_prep=[NAIndicator(kolom="inkomen_k"), Imputeer(kolom="inkomen_k", methode="iteratief"),
+                     Imputeer(kolom="klachten", methode="mediaan"), OneHot(kolom="contract"), Schaal()],
+        maat="Een gemiste opzegger kost ons veel meer dan een klant die we onterecht bellen. Vind er zoveel mogelijk.",
     )
 
 
@@ -127,6 +143,10 @@ def patient(seed: int = 37) -> Oefenset:
         juiste_split="groep",
         juiste_f1=[OnmogelijkNaarNA(kolom="glucose", regel="=0"), Split(methode="groep", groep_kolom="patient_id")],
         na_mechanismen={"glucose": "MCAR", "bmi": "MCAR", "bloeddruk": "MAR"},
+        juiste_prep=[VerwijderKolom(kolom="patient_id"), Imputeer(kolom="glucose", methode="mediaan"),
+                     Imputeer(kolom="bmi", methode="mediaan"), Imputeer(kolom="bloeddruk", methode="knn"),
+                     OneHot(kolom="geslacht"), Schaal()],
+        maat="Het model wordt gebruikt om patiënten te rangschikken voor extra controle; een goede volgorde telt.",
     )
 
 
@@ -150,6 +170,9 @@ def winkel(seed: int = 53) -> Oefenset:
         juiste_split="tijd",
         juiste_f1=[Split(methode="tijd", tijd_kolom="datum")],
         na_mechanismen={"temperatuur": "MCAR"},
+        juiste_prep=[VerwijderKolom(kolom="datum"), Imputeer(kolom="temperatuur", methode="mediaan"), OneHot(kolom="dag"),
+                     OneHot(kolom="promotie"), Schaal()],
+        maat="Voor de inkoop zijn grote afwijkingen duur; kleine fouten zijn niet erg.",
     )
 
 

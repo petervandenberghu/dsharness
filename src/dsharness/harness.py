@@ -5,6 +5,8 @@ from pathlib import Path
 
 from .config import laad
 from .data import DataLaag
+from .lab import Lab
+from .modeler import maak_modeler
 from .modellen import maak_model
 from .po import PO
 from .prep import maak_prep
@@ -12,7 +14,7 @@ from .prep_plan import PrepPlan
 from .reviewer import Reviewer
 from .scout import maak_scout
 from .verkenner import F3Rapport, maak_verkenner
-from .workflow import Team, Uitkomst, eerste_blik_tot_split, prepareer, verken_train
+from .workflow import Team, Uitkomst, eerste_blik_tot_split, modelleer, prepareer, verken_train
 
 
 class Harness:
@@ -24,9 +26,11 @@ class Harness:
         self.f1: Uitkomst | None = None
         self.f3: F3Rapport | None = None
         self.plan: PrepPlan | None = None
+        self.lab: Lab | None = None
         model = lambda rol: maak_model(self.config.model(rol), bij_wachten=self._wacht)  # noqa: E731
         self.team = Team(scout=maak_scout(model("data_scout")), reviewer=Reviewer(model("reviewer")),
-                         verkenner=maak_verkenner(model("verkenner")), prep=maak_prep(model("prep_engineer")))
+                         verkenner=maak_verkenner(model("verkenner")), prep=maak_prep(model("prep_engineer")),
+                         modeler=maak_modeler(model("modeler")))
 
     def _wacht(self, tekst: str) -> None:
         if self._po is not None:
@@ -50,13 +54,24 @@ class Harness:
         self.plan = await prepareer(po, self.data, f3=self.f3, plan=self.plan, **self._kw())
         return self.plan
 
+    async def modelleer(self, po: PO) -> Lab:
+        self._po = po
+        self.lab = await modelleer(po, self.data, plan=self.plan, positief=self.config.positief, lab=self.lab, **self._kw())
+        return self.lab
+
     async def run(self, po: PO) -> None:
-        """F1 → F2 → split → F3 → F4. Slaat fases over die al gedaan zijn; stopt als er geen split is."""
+        """F1 → F2 → split → F3 → F4 → F5. Slaat fases over die al gedaan zijn; stopt als een fase niet afkomt."""
         if not self.data.gesplitst:
             await self.eerste_blik(po)
         if not self.data.gesplitst:
             return
         if self.f3 is None:
             await self.verken_train(po)
-        await self.prepareer(po)
-        po.melding("F4 klaar. Volgende fase: F5 (modelleren met cross-validatie op train).")
+        if self.plan is None or self.plan.problemen(self.data.zicht()):
+            await self.prepareer(po)
+        if self.plan.problemen(self.data.zicht()):
+            return
+        if self.lab is None or not self.lab.gekozen:
+            await self.modelleer(po)
+        if self.lab.gekozen:
+            po.melding(f"F5 klaar: '{self.lab.gekozen}' gekozen. Volgende fase: F6 (eenmalige eindtest).")

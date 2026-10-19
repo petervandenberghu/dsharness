@@ -9,7 +9,7 @@ import yaml
 from pydantic import BaseModel, model_validator
 
 LOKALE_PROVIDERS = {"ollama", "vllm", "test", "function"}
-ROLLEN = ("data_scout", "reviewer", "verkenner", "prep_engineer")
+ROLLEN = ("data_scout", "reviewer", "verkenner", "prep_engineer", "modeler")
 
 
 class Config(BaseModel):
@@ -18,6 +18,7 @@ class Config(BaseModel):
     target: str
     taak: Literal["regressie", "classificatie"]
     data: str  # pad naar een csv, of "oefenset:<naam>"
+    positief: str | None = None  # classificatie: de klasse die telt (standaard de kleinste)
     data_policy: Literal["local_only", "cloud_allowed"] = "local_only"
     modellen: dict[str, str | list[str] | None]
 

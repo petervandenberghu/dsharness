@@ -27,12 +27,15 @@ CATALOGUS: dict[str, tuple[str, str]] = {
     "pipe": ("scikit-learn: Pipelines", "https://scikit-learn.org/stable/modules/compose.html"),
     "fes_numeric": ("Kuhn & Johnson (2019), FES hfst. 6: numerieke features", "https://bookdown.org/max/FES/engineering-numeric-predictors.html"),
     "esl": ("Hastie et al. (2009), ESL §7.10.2: de foute en goede manier van cross-validatie", "https://hastie.su.domains/ElemStatLearn/"),
+    "metrics": ("scikit-learn: Metrics and scoring", "https://scikit-learn.org/stable/modules/model_evaluation.html"),
+    "santos": ("Santos et al. (2018), Cross-validation for imbalanced datasets", "https://doi.org/10.1109/MCI.2018.2866730"),
+    "cawley": ("Cawley & Talbot (2010), On over-fitting in model selection", "https://jmlr.org/papers/v11/cawley10a.html"),
 }
 
 BronSleutel = Literal[
     "crisp", "pitfalls", "impute", "cv", "tts", "fimd_mech", "fimd_simple",
     "fes_missing", "kapoor", "kaufman", "geron", "fpp", "tukey",
-    "knn", "indicator", "prep", "ohe", "te", "pipe", "fes_numeric", "esl",
+    "knn", "indicator", "prep", "ohe", "te", "pipe", "fes_numeric", "esl", "metrics", "santos", "cawley",
 ]
 
 

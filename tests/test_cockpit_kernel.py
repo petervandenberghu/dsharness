@@ -101,3 +101,23 @@ print('Model-klaar' in html, 'afstand_km' in html, [f for f, _ in log.lees_rappo
     k.stdout.clear()
     assert k.voer_uit(code), k.errors
     assert "".join(k.stdout).strip() == "True True ['F4']"
+
+
+def test_resultatenkaart(k):
+    code = """
+import sys; sys.path.insert(0, 'tests')
+from test_modeler import klaar_voor_f5
+from dsharness.datasets import huizen
+from dsharness.lab import Lab
+from dsharness.acties import CVOpzet, Experiment, KiesModel
+o, d, p = klaar_voor_f5(huizen)
+lab = Lab(d, p, o.taak)
+for a in [CVOpzet(methode="kfold", metriek="rmse"), Experiment(naam="b", model="baseline"), Experiment(naam="lin", model="lineair"), KiesModel(experiment="lin")]:
+    lab.voer_uit(a)
+c.toon_resultaten(lab)
+h = c.feed.children[-1].value
+print('Gekozen voor F6: lin' in h, h.index('>lin') < h.index('>b<'), [f for f, _ in log.lees_rapporten()])
+"""
+    k.stdout.clear()
+    assert k.voer_uit(code), k.errors
+    assert "".join(k.stdout).strip() == "True True ['F5']"

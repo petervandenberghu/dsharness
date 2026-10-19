@@ -84,9 +84,39 @@ class Schaal(BaseModel):
     methode: Literal["standaard", "minmax", "robuust"] = "standaard"
 
 
+# ---------- F5: modelleren met cross-validatie op train ----------
+Metriek = Literal["rmse", "mae", "r2", "accuracy", "balanced_accuracy", "f1", "recall", "roc_auc"]
+ModelSoort = Literal["baseline", "lineair", "random_forest", "gradient_boosting", "knn"]
+
+
+class CVOpzet(BaseModel):
+    """Hoe er binnen train gevalideerd wordt, en op welke maat modellen worden vergeleken."""
+    type: Literal["cv_opzet"] = "cv_opzet"
+    methode: Literal["kfold", "stratified", "groep", "tijd"]
+    folds: int = Field(5, ge=2, le=20)
+    metriek: Metriek
+
+
+class Experiment(BaseModel):
+    """Eén model (met de F4-pipeline ervoor), beoordeeld met cross-validatie op train."""
+    type: Literal["experiment"] = "experiment"
+    naam: str = Field(description="Korte unieke naam, bijv. 'rf_diep'")
+    model: ModelSoort
+    parameters: dict[str, float | int | str | None] = Field(default_factory=dict)
+    selectie_k: int | None = Field(None, description="Houd de k beste features (binnen elke fold geselecteerd)")
+    gebalanceerd: bool = Field(False, description="class_weight='balanced' (alleen classificatie)")
+
+
+class KiesModel(BaseModel):
+    """Kies het experiment dat in F6 één keer op de testset wordt beoordeeld."""
+    type: Literal["kies_model"] = "kies_model"
+    experiment: str
+
+
 Actie = Annotated[
     Union[VerwijderDubbelen, OnmogelijkNaarNA, VerwijderZonderTarget, Split,
-          VerwijderKolom, NAIndicator, Imputeer, Afkappen, LogTransformatie, OneHot, TargetEncoding, Schaal],
+          VerwijderKolom, NAIndicator, Imputeer, Afkappen, LogTransformatie, OneHot, TargetEncoding, Schaal,
+          CVOpzet, Experiment, KiesModel],
     Field(discriminator="type"),
 ]
 PrepActie = Annotated[
@@ -97,6 +127,7 @@ PrepActie = Annotated[
 VASTE_REGELS = ("verwijder_dubbelen", "onmogelijk_naar_na", "verwijder_zonder_target")
 F1_TYPES = (*VASTE_REGELS, "split")
 F4_TYPES = ("verwijder_kolom", "na_indicator", "imputeer", "afkappen", "log", "onehot", "target_encoding", "schaal")
+F5_TYPES = ("cv_opzet", "experiment", "kies_model")
 
 
 def omschrijf(a: BaseModel) -> str:
@@ -125,4 +156,11 @@ def omschrijf(a: BaseModel) -> str:
             return f"Target encoding van '{k}'"
         case Schaal(kolommen=ks, methode=m):
             return f"Schalen ({m}): {'alle numerieke features' if ks == 'alle' else ', '.join(ks)}"
+        case CVOpzet(methode=sc, folds=f, metriek=m):
+            return f"Cross-validatie: {sc}, {f} folds, vergelijken op {m}"
+        case Experiment(naam=n, model=m, parameters=p, selectie_k=k, gebalanceerd=g):
+            extra = [f"{a}={b}" for a, b in p.items()] + ([f"k={k}"] if k else []) + (["gebalanceerd"] if g else [])
+            return f"Experiment '{n}': {m}" + (f" ({', '.join(extra)})" if extra else "")
+        case KiesModel(experiment=e):
+            return f"Model kiezen: '{e}'"
     raise TypeError(a)

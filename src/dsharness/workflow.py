@@ -1,4 +1,4 @@
-"""Workflow F1 → F2 → SPLIT → F3 → F4. Gewone Python: de volgorde en de gates liggen vast, geen LLM beslist dat."""
+"""Workflow F1 → F2 → SPLIT → F3 → F4 → F5. Gewone Python: de volgorde en de gates liggen vast, geen LLM beslist dat."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,6 +8,8 @@ from pydantic_ai import Agent
 
 from .acties import VASTE_REGELS, omschrijf
 from .data import DataLaag, KluisFout
+from .lab import Lab
+from .modeler import Modeler, ModelerDeps
 from .po import PO
 from .prep import PrepDeps, PrepEngineer
 from .prep_plan import PrepPlan, PrepPlanFout
@@ -24,9 +26,11 @@ class Team:
     reviewer: Reviewer
     verkenner: Agent[AgentDeps, F3Rapport] | None = None
     prep: PrepEngineer | None = None
+    modeler: Modeler | None = None
     max_reviewer_revisies: int = 1  # bij 'fout' mag de specialist eerst zelf herzien
     max_po_rondes: int = 3
     max_prep_rondes: int = 3  # aanvullende rondes tot de pipeline model-klaar is
+    max_model_rondes: int = 4  # rondes experimenten tot er een model gekozen is
 
 
 @dataclass
@@ -114,6 +118,35 @@ async def prepareer(po: PO, data: DataLaag, *, doel: str, taak: str, team: Team,
         return plan
     po.toon_plan(plan, proef)
     return plan
+
+
+async def modelleer(po: PO, data: DataLaag, *, doel: str, taak: str, team: Team, plan: PrepPlan,
+                    po_vragen: list[tuple[str, str]] | None = None, positief: str | None = None, lab: Lab | None = None) -> Lab:
+    """F5: rondes van voorstellen (CV-opzet, experimenten, modelkeuze) tot er een model gekozen is."""
+    if team.modeler is None:
+        raise ValueError("Geen Modeler in het team.")
+    if plan.problemen(data.zicht()):
+        raise ValueError("De F4-pipeline is nog niet model-klaar.")
+    lab = lab or Lab(data, plan, taak, positief)
+    deps = ModelerDeps(data=data, po=po, doel=doel, taak=taak, po_vragen=_vragen(po_vragen), lab=lab)
+    deps.max_vragen = len(deps.po_vragen) + 3
+    ctx = ReviewContext(data=data, taak=taak, po_vragen=deps.po_vragen, plan=plan, lab=lab)
+    po.melding("Modeler gaat aan de slag (F5, cross-validatie op train)…")
+    n = 0
+    for ronde in range(1, team.max_model_rondes + 1):
+        prompt = ("Eerste ronde: vraag de PO wat zwaar weegt, leg de CV-opzet vast en stel een baseline en enkele modellen voor."
+                  if lab.cv is None else f"Ronde {ronde}: bekijk de resultaten. Stel gerichte experimenten voor, of kies een model.")
+        for c in (await team.modeler.voorstel.run(prompt, deps=deps)).output.voorstellen:
+            n += 1
+            await _behandel(po, c, f"F5-{n:03d}", "F5 Modelleren", ctx, deps, team, herzie=team.modeler.herzie, uitvoer=lab.voer_uit)
+            if lab.gekozen:
+                break
+        if lab.resultaten:
+            po.toon_resultaten(lab)
+        if lab.gekozen:
+            return lab
+    po.melding(f"F5 gestopt na {team.max_model_rondes} rondes zonder gekozen model.")
+    return lab
 
 
 async def _behandel(po: PO, c: ConceptVoorstel, id: str, fase: str, ctx: ReviewContext, deps, team: Team, *,

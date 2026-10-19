@@ -219,6 +219,24 @@ class Cockpit:
           <ol style="margin:0;padding-left:20px">{stappen}</ol>
           <p class="dsh-meta" style="margin:8px 0 0">Features: {e(', '.join(proef['kolommen']))}</p>{vangnet}</div>"""))
 
+    def toon_resultaten(self, lab) -> None:
+        e = html.escape
+        self.log.schrijf_rapport("F5", _PlanSamenvatting(cv=lab.cv.model_dump(), gekozen=lab.gekozen,
+                                                          resultaten=[r.model_dump() for r in lab.resultaten.values()]))
+        beste = lab.beste()
+        rijen = "".join(
+            f"<tr style='{'font-weight:700' if r.naam == lab.gekozen else ''}'><td>{e(r.naam)}{' ✓' if r.naam == lab.gekozen else ''}</td>"
+            f"<td>{e(r.omschrijving.split(': ', 1)[-1])}</td><td>{r.gemiddelde:.3f} ± {r.sd:.3f}</td><td>{r.train:.3f}</td>"
+            f"<td>{'beste' if beste and r.naam == beste.naam else ''}</td></tr>"
+            for r in sorted(lab.resultaten.values(), key=lambda r: r.gemiddelde, reverse=lab.beter(1, 0)))
+        kop = f"Gekozen voor F6: {lab.gekozen}" if lab.gekozen else f"{len(lab.resultaten)} experiment(en)"
+        self._voeg_toe(w.HTML(CSS + f"""<div class="dsh-kaart" style="--dsh-k:#2F6FAF;max-width:1000px">
+          <div class="dsh-meta">F5 · Cross-validatie op train · {e(lab.cv.methode)}, {lab.cv.folds} folds</div>
+          <h3>{e(kop)}</h3><div style="overflow-x:auto"><table class="dsh-tabel"><thead><tr><th>experiment</th><th>model</th>
+          <th>{e(lab.cv.metriek)} (validatie)</th><th>train</th><th></th></tr></thead><tbody>{rijen}</tbody></table></div>
+          <p class="dsh-meta" style="margin:8px 0 0">Groot verschil tussen train en validatie wijst op overfitting.
+          Een verschil kleiner dan de spreiding (±) is vooral ruis.</p></div>"""))
+
     # ---------- async ----------
     async def vraag_akkoord(self, v: Voorstel, figuur: Any = None) -> Besluit:
         fut = asyncio.get_running_loop().create_future()

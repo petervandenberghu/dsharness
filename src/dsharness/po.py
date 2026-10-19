@@ -12,6 +12,7 @@ class PO(Protocol):
     def melding(self, tekst: str) -> None: ...
     def toon_rapport(self, rapport: Any) -> None: ...
     def toon_plan(self, plan: Any, proef: dict) -> None: ...
+    def toon_resultaten(self, lab: Any) -> None: ...
 
 
 def standaard_besluit(v: Voorstel) -> Besluit:
@@ -31,11 +32,12 @@ class ScriptedPO:
         self.meldingen: list[str] = []
         self.rapporten: list[Any] = []
         self.plannen: list[tuple[Any, dict]] = []
+        self.resultaten: list[str] = []
 
     async def vraag_po(self, vraag: str, context: str = "") -> str:
         tekst = f"{vraag} {context}".lower()
         hits = [antwoord for kolom, antwoord in self.kennis.items() if kolom.lower() in tekst]
-        antwoord = " ".join(hits) or "Dat weet ik niet."
+        antwoord = " ".join(dict.fromkeys(hits)) or "Dat weet ik niet."
         self.vragen.append((vraag, antwoord))
         return antwoord
 
@@ -52,3 +54,6 @@ class ScriptedPO:
 
     def toon_plan(self, plan: Any, proef: dict) -> None:
         self.plannen.append((plan, proef))
+
+    def toon_resultaten(self, lab: Any) -> None:
+        self.resultaten.append(lab.overzicht())
