@@ -2,7 +2,9 @@
 
 Elke dataset heeft:
 - `valkuilen`: wat een goede verkenning moet vinden (ground truth voor evals);
-- `po_kennis`: wat een gesimuleerde PO per kolom weet.
+- `po_kennis`: wat een gesimuleerde PO per kolom weet;
+- `juiste_f1`: de juiste vaste regels en split (om F3 los te kunnen testen);
+- `na_mechanismen`: het echte NA-mechanisme per kolom na F2 (ground truth voor F3).
 """
 from __future__ import annotations
 
@@ -10,6 +12,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+
+from .acties import OnmogelijkNaarNA, Split, VerwijderDubbelen, VerwijderZonderTarget
 
 
 @dataclass(frozen=True)
@@ -28,6 +32,8 @@ class Oefenset:
     valkuilen: list[Valkuil]
     po_kennis: dict[str, str] = field(default_factory=dict)
     juiste_split: str = "willekeurig"
+    juiste_f1: list = field(default_factory=list)
+    na_mechanismen: dict[str, str] = field(default_factory=dict)
 
 
 def huizen(seed: int = 11) -> Oefenset:
@@ -58,6 +64,9 @@ def huizen(seed: int = 11) -> Oefenset:
          "bouwjaar": "Van oude panden in het centrum staat het bouwjaar vaak niet in het register.",
          "prijs_k": "Van één huis is de verkoopprijs nooit geregistreerd.",
          "wijk": "Er zijn vier wijken. Het centrum is het duurst."},
+        juiste_f1=[VerwijderDubbelen(), OnmogelijkNaarNA(kolom="oppervlakte", regel="<0"), VerwijderZonderTarget(),
+                   Split(methode="willekeurig")],
+        na_mechanismen={"kamers": "MCAR", "bouwjaar": "MAR", "oppervlakte": "MCAR"},
     )
 
 
@@ -83,6 +92,8 @@ def klant(seed: int = 23) -> Oefenset:
          "klachten": "Door een storing in het klachtensysteem missen bij twee klanten de gegevens.",
          "opgezegd": "Ongeveer één op de zeven klanten zegt op. Die willen we op tijd vinden."},
         juiste_split="gestratificeerd",
+        juiste_f1=[Split(methode="gestratificeerd")],
+        na_mechanismen={"inkomen_k": "MNAR", "klachten": "MCAR"},
     )
 
 
@@ -114,6 +125,8 @@ def patient(seed: int = 37) -> Oefenset:
          "bloeddruk": "Bij jonge patiënten meten we de bloeddruk vaak niet, omdat hun risico laag is.",
          "diabetes": "De diagnose staat vast per patiënt."},
         juiste_split="groep",
+        juiste_f1=[OnmogelijkNaarNA(kolom="glucose", regel="=0"), Split(methode="groep", groep_kolom="patient_id")],
+        na_mechanismen={"glucose": "MCAR", "bmi": "MCAR", "bloeddruk": "MAR"},
     )
 
 
@@ -135,6 +148,8 @@ def winkel(seed: int = 53) -> Oefenset:
          "temperatuur": "De temperatuursensor viel drie keer uit, op willekeurige dagen.",
          "promotie": "Op promotiedagen is er een aanbieding in de folder."},
         juiste_split="tijd",
+        juiste_f1=[Split(methode="tijd", tijd_kolom="datum")],
+        na_mechanismen={"temperatuur": "MCAR"},
     )
 
 

@@ -8,11 +8,11 @@ BASIS = dict(project="p", doel="d", target="prijs_k", taak="regressie", data="oe
 
 def test_local_only_weigert_cloudmodel():
     with pytest.raises(ValidationError, match="cloudmodel"):
-        Config(**BASIS, data_policy="local_only", modellen={"data_scout": "ollama:gemma4:12b", "reviewer": "google:gemini-flash-latest"})
+        Config(**BASIS, data_policy="local_only", modellen={"data_scout": "ollama:gemma4:12b", "reviewer": "google:gemini-flash-latest", "verkenner": None})
 
 
 def test_local_only_met_lokale_modellen():
-    c = Config(**BASIS, data_policy="local_only", modellen={"data_scout": "ollama:gemma4:12b", "reviewer": None})
+    c = Config(**BASIS, data_policy="local_only", modellen={"data_scout": "ollama:gemma4:12b", "reviewer": None, "verkenner": "ollama:gemma4:12b"})
     assert c.model("reviewer") is None
 
 

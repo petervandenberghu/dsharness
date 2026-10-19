@@ -11,3 +11,4 @@ data_policy: cloud_allowed
 modellen:
   data_scout: google:gemini-flash-latest   # lokaal: ollama:gemma4:12b
   reviewer: google:gemini-flash-latest     # leeg laten = alleen de vaste regels
+  verkenner: google:gemini-flash-latest

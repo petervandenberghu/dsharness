@@ -2,7 +2,7 @@
 
 Multi-agent data science harness met een cockpit-notebook. De PO (gebruiker) keurt elk voorstel goed, past het aan, wijst het af of overrulet het. Alle besluiten en vragen komen in een beslislog.
 
-**Status:** F1 (eerste blik) → F2 (vaste regels) → split werkt, met de Data Scout en de Reviewer.
+**Status:** F1 (eerste blik) → F2 (vaste regels) → split → F3 (verkennen op train) werkt, met de Data Scout, de Reviewer en de Verkenner.
 
 ## Starten
 ```
@@ -19,7 +19,9 @@ Met `data_policy: local_only` weigert de harness cloudmodellen.
 |---|---|
 | `data.py` | DataLaag: de enige toegang tot de data. Na de split zit de testset in de kluis |
 | `verkennen.py` | Verkenningsfuncties: compacte samenvattingen, geen ruwe rijen |
-| `scout.py` | Data Scout (Pydantic AI): verkent, vraagt de PO, stelt vaste regels en een split voor |
+| `tools.py` | Gedeelde tools; F3-tools (NA-patroon, verdeling, relatie met target) werken alleen na de split |
+| `scout.py` | Data Scout (F1): verkent, vraagt de PO, stelt vaste regels en een split voor |
+| `verkenner.py` | Verkenner (F3): kolomprofielen op train; NA-mechanisme pas na NA-patroon én een vraag aan de PO |
 | `reviewer.py` | Reviewer: vaste regels in code plus optioneel een LLM, die alleen strenger mag zijn |
 | `workflow.py` | Volgorde en gates in gewone Python: review → herzien → PO → uitvoeren |
 | `cockpit.py` | Kaarten in het notebook (ipywidgets) |
@@ -30,6 +32,7 @@ Met `data_policy: local_only` weigert de harness cloudmodellen.
 ```
 uv run pytest                                   # zonder netwerk
 uv run python scripts/eval_scout.py <scout-model> <reviewer-model|->
+uv run python scripts/eval_verkenner.py <model> [datasets]
 ```
 De eval laat de Scout los op de vier oefendatasets, met een gesimuleerde PO. Hij meet welke valkuilen gevonden worden en of de split klopt.
 

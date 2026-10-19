@@ -22,6 +22,12 @@ class Beslislog:
     def schrijf_vraag(self, vraag: str, antwoord: str) -> None:
         self._schrijf({"soort": "vraag", "vraag": vraag, "antwoord": antwoord, "tijdstip": datetime.now().isoformat()})
 
+    def schrijf_rapport(self, fase: str, rapport) -> None:
+        self._schrijf({"soort": "rapport", "fase": fase, "rapport": rapport.model_dump(mode="json"), "tijdstip": datetime.now().isoformat()})
+
+    def lees_rapporten(self) -> list[tuple[str, dict]]:
+        return [(d["fase"], d["rapport"]) for d in self._regels("rapport")]
+
     def _regels(self, soort: str) -> list[dict]:
         if not self.pad.exists():
             return []

@@ -69,3 +69,10 @@ def test_tweede_split_kan_niet():
     d.voer_uit(Split(methode="willekeurig"))
     with pytest.raises(KluisFout):
         d.voer_uit(Split(methode="willekeurig"))
+
+
+def test_geschiedenis():
+    d = DataLaag(huizen().df, target="prijs_k")
+    d.voer_uit(VerwijderDubbelen())
+    d.voer_uit(Split(methode="willekeurig"))
+    assert d.geschiedenis[0].startswith("Dubbele rijen verwijderen: 2 ") and "Train/test-split" in d.geschiedenis[1]

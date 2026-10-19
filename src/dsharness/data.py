@@ -13,7 +13,7 @@ from typing import Callable, TypeVar
 import numpy as np
 import pandas as pd
 
-from .acties import OnmogelijkNaarNA, Split, VerwijderDubbelen, VerwijderZonderTarget
+from .acties import OnmogelijkNaarNA, Split, VerwijderDubbelen, VerwijderZonderTarget, omschrijf
 
 T = TypeVar("T")
 
@@ -40,6 +40,7 @@ class DataLaag:
         self._set: pd.Series | None = None
         self._test_gebruikt = False
         self.split_actie: Split | None = None
+        self.geschiedenis: list[str] = []  # uitgevoerde acties, met resultaat
 
     def __repr__(self) -> str:
         return f"DataLaag(target={self.target!r}, gesplitst={self.gesplitst}, n_train={self.n_train}, n_test={self.n_test})"
@@ -83,6 +84,11 @@ class DataLaag:
 
     # ---------- uitvoeren ----------
     def voer_uit(self, actie) -> str:
+        resultaat = self._voer_uit(actie)
+        self.geschiedenis.append(f"{omschrijf(actie)}: {resultaat}")
+        return resultaat
+
+    def _voer_uit(self, actie) -> str:
         match actie:
             case VerwijderDubbelen():
                 voor = len(self._df)

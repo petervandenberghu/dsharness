@@ -65,3 +65,18 @@ def test_tweede_klik_na_besluit_wordt_genegeerd(k):
     k.klik("Afwijzen")
     k.klik("Bevestigen")
     assert uitkomst(k, "print(taak.result().keuze, len(log.lees()))") == "akkoord 1"
+
+
+def test_rapportkaarten(k):
+    code = """
+from dsharness.verkenner import F3Rapport, KolomProfiel
+from dsharness.rapport import Verkenningsrapport, Bevinding
+r3 = F3Rapport(samenvatting="s <b>", target="t", voor_f4=["bouwjaar: MAR"], profielen=[
+    KolomProfiel(kolom="bouwjaar", type="getal", na_aantal=4, na_mechanisme="MAR", na_onderbouwing="patroon in wijk", verdeling="v"),
+    KolomProfiel(kolom="wijk", type="categorie", na_aantal=0, na_mechanisme="geen_na", verdeling="4 groepen")])
+c.toon_rapport(r3)
+print(len(c.feed.children), 'bouwjaar' in c.feed.children[-1].value, '&lt;b&gt;' in c.feed.children[-1].value, [f for f, _ in log.lees_rapporten()])
+"""
+    k.stdout.clear()
+    assert k.voer_uit(code), k.errors
+    assert "".join(k.stdout).strip() == "1 True True ['F3']"

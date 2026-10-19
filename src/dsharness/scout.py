@@ -1,29 +1,18 @@
 """Data Scout: verkent de data in F1 (vóór de split) en stelt vaste regels en een split voor."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from pydantic_ai import Agent, ModelRetry, RunContext
-from pydantic_ai.toolsets import FunctionToolset
 
-from . import verkennen as vk
 from .bronnen import catalogus_tekst
 from .data import DataLaag
 from .modellen import maak_model
-from .po import PO
 from .rapport import ConceptVoorstel, Verkenningsrapport
 from .reviewer import ReviewContext, groep_kandidaten, tijd_kandidaten
+from .tools import AgentDeps, basis_tools
 
-
-@dataclass
-class ScoutDeps:
-    data: DataLaag
-    po: PO
-    doel: str
-    taak: str
-    po_vragen: list[tuple[str, str]] = field(default_factory=list)
-    max_vragen: int = 6
-
+ScoutDeps = AgentDeps
 
 INSTRUCTIES = f"""Je bent de Data Scout in een data science-team. Je werkt in fase F1: de eerste blik, vóór de train/test-split.
 De gebruiker is de product owner (PO). Alleen de PO weet iets over de business en de herkomst van de data.
@@ -49,10 +38,9 @@ niet gevraagd hebt), plan, waarom, en bron_sleutels uit deze lijst:
 Schrijf alles kort en in eenvoudig Nederlands."""
 
 
-def _kolom(ctx: RunContext[ScoutDeps], kolom: str) -> None:
-    kolommen = list(ctx.deps.data.zicht().columns)
-    if kolom not in kolommen:
-        raise ModelRetry(f"Kolom '{kolom}' bestaat niet. Kies uit: {kolommen}")
+def opdracht(ctx: RunContext[AgentDeps]) -> str:
+    d = ctx.deps
+    return f"Projectdoel: {d.doel}\nTarget: '{d.data.target}' ({d.taak}). Fase: {'na' if d.data.gesplitst else 'vóór'} de split."
 
 
 def ontbrekend(rapport: Verkenningsrapport, data: DataLaag, taak: str) -> list[str]:
@@ -78,78 +66,19 @@ def ontbrekend(rapport: Verkenningsrapport, data: DataLaag, taak: str) -> list[s
 @dataclass
 class Scout:
     """Twee agents met dezelfde tools: één verkent en rapporteert, één herziet een voorstel."""
-    verken: Agent[ScoutDeps, Verkenningsrapport]
-    herzie: Agent[ScoutDeps, ConceptVoorstel]
-
-
-def _opdracht(ctx: RunContext[ScoutDeps]) -> str:
-    d = ctx.deps
-    return f"Projectdoel: {d.doel}\nTarget: '{d.data.target}' ({d.taak}). Fase: {'na' if d.data.gesplitst else 'vóór'} de split."
+    verken: Agent[AgentDeps, Verkenningsrapport]
+    herzie: Agent[AgentDeps, ConceptVoorstel]
 
 
 def maak_scout(model=None) -> Scout:
-    ts: FunctionToolset[ScoutDeps] = FunctionToolset()
-
-    def _zicht(ctx: RunContext[ScoutDeps], tool: str, kolom: str | None = None):
-        if kolom is not None:
-            _kolom(ctx, kolom)
-        ctx.deps.data.noteer(tool, kolom)
-        return ctx.deps.data.zicht()
-
-    @ts.tool
-    def vorm(ctx: RunContext[ScoutDeps]) -> dict:
-        """Aantal rijen, en per kolom het type, het aantal verschillende waarden en 3 voorbeelden."""
-        return vk.vorm(_zicht(ctx, "vorm"))
-
-    @ts.tool
-    def dubbelen(ctx: RunContext[ScoutDeps]) -> dict:
-        """Rijen die in alle kolommen gelijk zijn aan een andere rij."""
-        return vk.dubbelen(_zicht(ctx, "dubbelen"))
-
-    @ts.tool
-    def na_telling(ctx: RunContext[ScoutDeps]) -> dict:
-        """Aantal en fractie ontbrekende waarden per kolom."""
-        return vk.na_telling(_zicht(ctx, "na_telling"))
-
-    @ts.tool
-    def beschrijf(ctx: RunContext[ScoutDeps]) -> dict:
-        """Per numerieke kolom: min, kwartielen, gemiddelde, max, scheefheid, aantal nullen en negatieve waarden.
-        Per categorische kolom: aantal verschillende waarden en de meest voorkomende."""
-        return vk.beschrijf(_zicht(ctx, "beschrijf"))
-
-    @ts.tool
-    def tel_waarden(ctx: RunContext[ScoutDeps], kolom: str) -> dict:
-        """Hoe vaak elke waarde voorkomt. Handig voor ID's (herhaling?) en voor de klassen van de target."""
-        return vk.tel_waarden(_zicht(ctx, "tel_waarden", kolom), kolom)
-
-    @ts.tool
-    def uitschieters(ctx: RunContext[ScoutDeps], kolom: str) -> dict:
-        """Waarden buiten de IQR-grenzen (Tukey) in een numerieke kolom."""
-        return vk.uitschieters(_zicht(ctx, "uitschieters", kolom), kolom)
-
-    @ts.tool
-    def tijdsverloop(ctx: RunContext[ScoutDeps], tijd_kolom: str) -> dict:
-        """Trend van de target over een tijdkolom. Nodig om te bepalen of je op tijd moet splitsen."""
-        return vk.tijdsverloop(_zicht(ctx, "tijdsverloop", tijd_kolom), tijd_kolom, ctx.deps.data.target)
-
-    @ts.tool
-    async def vraag_po(ctx: RunContext[ScoutDeps], vraag: str, context: str = "") -> str:
-        """Stel de PO een vraag over de business of de data. `context`: de getallen die je zag."""
-        d = ctx.deps
-        if len(d.po_vragen) >= d.max_vragen:
-            return "Je hebt het maximum aantal vragen bereikt. Werk verder met wat je weet en meld wat onbekend is."
-        antwoord = await d.po.vraag_po(vraag, context)
-        d.po_vragen.append((vraag, antwoord))
-        return antwoord
-
-    m = maak_model(model)
-    verken = Agent(m, deps_type=ScoutDeps, output_type=Verkenningsrapport, instructions=[INSTRUCTIES, _opdracht],
+    m, ts = maak_model(model), basis_tools()
+    verken = Agent(m, deps_type=AgentDeps, output_type=Verkenningsrapport, instructions=[INSTRUCTIES, opdracht],
                    toolsets=[ts], name="data_scout", retries=3)
-    herzie = Agent(m, deps_type=ScoutDeps, output_type=ConceptVoorstel, instructions=[INSTRUCTIES, _opdracht],
+    herzie = Agent(m, deps_type=AgentDeps, output_type=ConceptVoorstel, instructions=[INSTRUCTIES, opdracht],
                    toolsets=[ts], name="data_scout_herzien", retries=3)
 
     @verken.output_validator
-    def _volledig(ctx: RunContext[ScoutDeps], uit: Verkenningsrapport) -> Verkenningsrapport:
+    def _volledig(ctx: RunContext[AgentDeps], uit: Verkenningsrapport) -> Verkenningsrapport:
         if mist := ontbrekend(uit, ctx.deps.data, ctx.deps.taak):
             raise ModelRetry("Je rapport is niet volledig. Voeg een bevinding toe (met bewijs) voor: " + "; ".join(mist)
                              + ". Verken waar nodig eerst met je tools.")

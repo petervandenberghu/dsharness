@@ -9,7 +9,7 @@ import yaml
 from pydantic import BaseModel, model_validator
 
 LOKALE_PROVIDERS = {"ollama", "vllm", "test", "function"}
-ROLLEN = ("data_scout", "reviewer")
+ROLLEN = ("data_scout", "reviewer", "verkenner")
 
 
 class Config(BaseModel):

@@ -58,3 +58,20 @@ def test_daglimiet_stopt_direct(monkeypatch):
     with pytest.raises(modellen.LimietBereikt, match="daglimiet"):
         Agent(GeduldigModel(FunctionModel(f))).run_sync("x")
     assert geslapen == []
+
+
+def test_opnieuw_bij_timeout(monkeypatch):
+    from pydantic_ai.exceptions import ModelAPIError
+
+    async def geen_slaap(_):
+        return None
+    monkeypatch.setattr(modellen.asyncio, "sleep", geen_slaap)
+    pogingen = []
+
+    def f(messages, info):
+        pogingen.append(1)
+        if len(pogingen) < 2:
+            raise ModelAPIError("m", "ReadTimeout")
+        return ModelResponse(parts=[TextPart("hoi")])
+
+    assert Agent(GeduldigModel(FunctionModel(f))).run_sync("x").output == "hoi"

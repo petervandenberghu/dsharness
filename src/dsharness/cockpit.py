@@ -31,6 +31,9 @@ CSS = """
 .dsh-badge{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:var(--dsh-k);margin-bottom:6px}
 .dsh-review{margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--jp-layout-color2,#F4F6F8)}
 .dsh-meta{color:var(--jp-ui-font-color2,#5B6577);font-size:12px}
+.dsh-tabel{border-collapse:collapse;font-size:13px;width:100%}
+.dsh-tabel th,.dsh-tabel td{text-align:left;vertical-align:top;padding:4px 8px;border-bottom:1px solid var(--jp-border-color2,#E3E7EC)}
+.dsh-tabel th{color:var(--jp-ui-font-color2,#5B6577);font-weight:600}
 </style>
 """
 
@@ -175,6 +178,24 @@ class Cockpit:
     def melding(self, tekst: str) -> None:
         self._voeg_toe(w.HTML(f'<div class="dsh-meta" style="margin:0 0 8px">{html.escape(tekst)}</div>'))
 
+    def _toon_profielen(self, r) -> None:
+        e = html.escape
+        kleur = {"geen_na": "", "MCAR": "#2C7A57", "MAR": "#A86300", "MNAR": "#B42318", "onbekend": "#56627A"}
+        rijen = "".join(
+            f"<tr><td><b>{e(p.kolom)}</b><div class='dsh-meta'>{p.type}</div></td>"
+            f"<td>{p.na_aantal or ''}</td>"
+            f"<td style='color:{kleur[p.na_mechanisme]};font-weight:600'>{'' if p.na_mechanisme == 'geen_na' else p.na_mechanisme}"
+            f"<div class='dsh-meta' style='font-weight:400'>{e(p.na_onderbouwing)}</div></td>"
+            f"<td>{e(p.verdeling)}</td><td>{e(p.uitschieters)}</td><td>{e(p.relatie_target)}</td></tr>"
+            for p in r.profielen)
+        punten = "".join(f"<li>{e(x)}</li>" for x in r.voor_f4)
+        self._voeg_toe(w.HTML(CSS + f"""<div class="dsh-kaart" style="--dsh-k:#56627A;max-width:1100px">
+          <div class="dsh-meta">F3 · Kolomprofielen (trainset)</div><h3>{e(r.samenvatting)}</h3>
+          <p style="margin:0 0 8px"><b>Target:</b> {e(r.target)}</p>
+          <div style="overflow-x:auto"><table class="dsh-tabel"><thead><tr><th>kolom</th><th>NA</th><th>mechanisme</th>
+          <th>verdeling</th><th>uitschieters</th><th>relatie met target</th></tr></thead><tbody>{rijen}</tbody></table></div>
+          <p style="margin:10px 0 4px"><b>Voor F4</b></p><ul style="margin:0;padding-left:18px">{punten}</ul></div>"""))
+
     # ---------- async ----------
     async def vraag_akkoord(self, v: Voorstel, figuur: Any = None) -> Besluit:
         fut = asyncio.get_running_loop().create_future()
@@ -193,6 +214,11 @@ class Cockpit:
         return await fut
 
     def toon_rapport(self, rapport) -> None:
+        if hasattr(rapport, "profielen"):
+            self.log.schrijf_rapport("F3", rapport)
+            self._toon_profielen(rapport)
+            return
+        self.log.schrijf_rapport("F1", rapport)
         e = html.escape
         items = "".join(
             f"<li><b>{e(b.kolom or 'algemeen')}</b> ({e(b.soort)}): {e(b.beschrijving)}"
