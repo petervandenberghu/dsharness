@@ -24,3 +24,12 @@ def test_rol_ontbreekt():
 def test_project_yaml_laadt(tmp_path):
     cfg, basis = laad("project.yaml")
     assert cfg.laad_data(basis).shape == (60, 6)
+
+
+def test_lijst_modellen_en_policy():
+    with pytest.raises(ValidationError, match="cloudmodel"):
+        Config(**BASIS, data_policy="local_only",
+               modellen={"data_scout": ["ollama:gemma4:12b", "google:gemini-flash-latest"], "reviewer": None, "verkenner": None})
+    c = Config(**BASIS, data_policy="cloud_allowed",
+               modellen={"data_scout": ["google:gemini-flash-latest", "ollama:gemma4:12b"], "reviewer": None, "verkenner": None})
+    assert c.model("data_scout")[1] == "ollama:gemma4:12b"

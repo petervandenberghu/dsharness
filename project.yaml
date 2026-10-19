@@ -8,7 +8,9 @@ data: oefenset:huizen          # of een pad naar een csv, relatief aan dit besta
 # cloud_allowed: ook cloudmodellen. De agents krijgen samenvattingen te zien, geen ruwe rijen.
 data_policy: cloud_allowed
 
+# Per rol één model, of een lijst: bij aanhoudende fouten (overbelast, daglimiet) neemt het volgende het over.
+# Reviewer leeg laten = alleen de vaste regels.
 modellen:
-  data_scout: google:gemini-flash-latest   # lokaal: ollama:gemma4:12b
-  reviewer: google:gemini-flash-latest     # leeg laten = alleen de vaste regels
-  verkenner: google:gemini-flash-latest
+  data_scout: [google:gemini-3.1-flash-lite, ollama:gemma4:12b]
+  reviewer: [google:gemini-3-flash-preview, ollama:gemma4:12b]
+  verkenner: [google:gemini-3.1-flash-lite, ollama:gemma4:12b]

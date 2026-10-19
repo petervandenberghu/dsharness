@@ -1,7 +1,7 @@
 """Eval F3: bepaalt de Verkenner het juiste NA-mechanisme per kolom?
 
 F1 wordt zonder LLM gedaan (de juiste vaste regels en split), zodat alleen F3 gemeten wordt.
-Gebruik:  uv run python -u scripts/eval_verkenner.py [model] [datasets,komma,gescheiden]
+Gebruik:  uv run python -u scripts/eval_verkenner.py [model of model+fallback] [datasets,komma,gescheiden]
 """
 import asyncio
 import sys
@@ -48,5 +48,6 @@ async def main(model: str, namen: list[str]) -> None:
 
 if __name__ == "__main__":
     model = sys.argv[1] if len(sys.argv) > 1 else "google:gemini-3.1-flash-lite"
+    model = model.split("+") if "+" in model else model  # a+b: b is fallback
     namen = sys.argv[2].split(",") if len(sys.argv) > 2 else list(ALLE)
     asyncio.run(main(model, namen))

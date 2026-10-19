@@ -75,3 +75,15 @@ def test_opnieuw_bij_timeout(monkeypatch):
         return ModelResponse(parts=[TextPart("hoi")])
 
     assert Agent(GeduldigModel(FunctionModel(f))).run_sync("x").output == "hoi"
+
+
+def test_fallback_neemt_over_bij_daglimiet():
+    def dag(messages, info):
+        raise ModelHTTPError(429, "m", body={"details": [{"retryDelay": "65187s"}]})
+
+    def ok(messages, info):
+        return ModelResponse(parts=[TextPart("van de fallback")])
+
+    from pydantic_ai.models.fallback import FallbackModel
+    m = FallbackModel(GeduldigModel(FunctionModel(dag)), GeduldigModel(FunctionModel(ok)))
+    assert Agent(m).run_sync("x").output == "van de fallback"

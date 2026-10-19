@@ -1,4 +1,7 @@
-"""Modellen maken uit een naam ('provider:model'), met geduld bij rate limits. Werkt voor elke provider."""
+"""Modellen maken uit een naam ('provider:model') of een lijst namen (fallback), met geduld bij tijdelijke fouten.
+
+Werkt voor elke provider: alles gaat via de foutsoorten van Pydantic AI, niet via provider-specifieke clients.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -8,13 +11,14 @@ from typing import Callable
 
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.models import Model
+from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.wrapper import WrapperModel
 
 TIJDELIJK = {429, 500, 502, 503, 504}
 
 
-class LimietBereikt(RuntimeError):
-    """Het model vraagt langer te wachten dan zinvol is (bijvoorbeeld een daglimiet)."""
+class LimietBereikt(ModelAPIError):
+    """Het model vraagt langer te wachten dan zinvol is (bijvoorbeeld een daglimiet). Een fallback neemt het over."""
 
 
 def wachttijd(e: ModelAPIError, poging: int) -> float:
@@ -51,7 +55,7 @@ class GeduldigModel(WrapperModel):
                     raise
                 t = wachttijd(e, poging)
                 if t > self.max_wacht:
-                    raise LimietBereikt(
+                    raise LimietBereikt(self.model_name,
                         f"{self.model_name} vraagt {t / 3600:.1f} uur te wachten (waarschijnlijk een daglimiet). "
                         "Kies een ander model in project.yaml of probeer het later opnieuw.") from e
                 if self.bij_wachten:
@@ -60,9 +64,18 @@ class GeduldigModel(WrapperModel):
         raise AssertionError("onbereikbaar")
 
 
-def maak_model(naam: str | Model | None, *, bij_wachten: Callable[[str], None] | None = None) -> Model | None:
-    if naam is None or isinstance(naam, Model):
-        return naam
+def _een(naam: str, max_pogingen: int, bij_wachten) -> GeduldigModel:
     if naam.startswith("ollama:"):
         os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-    return GeduldigModel(naam, bij_wachten=bij_wachten)
+    return GeduldigModel(naam, max_pogingen=max_pogingen, bij_wachten=bij_wachten)
+
+
+def maak_model(naam: str | list[str] | Model | None, *, bij_wachten: Callable[[str], None] | None = None) -> Model | None:
+    """Eén naam: geduldig model. Een lijst: het eerste model, en bij aanhoudende fouten het volgende."""
+    if naam is None or isinstance(naam, Model):
+        return naam
+    if isinstance(naam, str):
+        return _een(naam, 6, bij_wachten)
+    if len(naam) == 1:
+        return _een(naam[0], 6, bij_wachten)
+    return FallbackModel(*(_een(n, 3, bij_wachten) for n in naam))

@@ -19,7 +19,7 @@ class Config(BaseModel):
     taak: Literal["regressie", "classificatie"]
     data: str  # pad naar een csv, of "oefenset:<naam>"
     data_policy: Literal["local_only", "cloud_allowed"] = "local_only"
-    modellen: dict[str, str | None]
+    modellen: dict[str, str | list[str] | None]
 
     @model_validator(mode="after")
     def _controleer(self) -> "Config":
@@ -27,12 +27,13 @@ class Config(BaseModel):
         if ontbreekt:
             raise ValueError(f"Geen model ingesteld voor: {', '.join(ontbreekt)}")
         if self.data_policy == "local_only":
-            cloud = {r: m for r, m in self.modellen.items() if m and m.split(":", 1)[0] not in LOKALE_PROVIDERS}
+            cloud = {r: n for r, m in self.modellen.items() for n in ([m] if isinstance(m, str) else m or [])
+                     if n.split(":", 1)[0] not in LOKALE_PROVIDERS}
             if cloud:
                 raise ValueError(f"data_policy is local_only, maar deze rollen gebruiken een cloudmodel: {cloud}")
         return self
 
-    def model(self, rol: str) -> str | None:
+    def model(self, rol: str) -> str | list[str] | None:
         return self.modellen[rol]
 
     def laad_data(self, basis: Path) -> pd.DataFrame:
