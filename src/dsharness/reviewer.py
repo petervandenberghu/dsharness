@@ -5,17 +5,19 @@ De LLM mag een oordeel strenger maken, nooit milder: het eindoordeel is het stre
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 import pandas as pd
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
-from .acties import OnmogelijkNaarNA, Split, VerwijderDubbelen, VerwijderZonderTarget
+from .acties import (F4_TYPES, Afkappen, Imputeer, LogTransformatie, NAIndicator, OneHot, OnmogelijkNaarNA, Schaal, Split,
+                     TargetEncoding, VerwijderDubbelen, VerwijderKolom, VerwijderZonderTarget)
 from .bronnen import BronSleutel, bron, catalogus_tekst
 from .contracts import ReviewOordeel
 from .data import DataLaag
 from .modellen import maak_model
+from .prep_plan import EENVOUDIG, PrepPlan, PrepPlanFout
 from .rapport import Bevinding, ConceptVoorstel
 
 Oordeel = Literal["goed", "twijfel", "fout"]
@@ -35,6 +37,8 @@ class ReviewContext:
     taak: str  # "regressie" of "classificatie"
     bevindingen: list[Bevinding] = field(default_factory=list)
     po_vragen: list[tuple[str, str]] = field(default_factory=list)  # (vraag, antwoord), echt gesteld
+    profielen: dict[str, Any] = field(default_factory=dict)  # F3: kolom → KolomProfiel
+    plan: PrepPlan | None = None  # F4: het plan tot nu toe
 
     def po_gevraagd_over(self, kolom: str) -> bool:
         return any(kolom.lower() in (v + " " + a).lower() for v, a in self.po_vragen)
@@ -104,7 +108,82 @@ def regels(c: ConceptVoorstel, ctx: ReviewContext) -> list[Uitkomst]:
                 u.append(Uitkomst("twijfel", "Alle rijen hebben een target; deze stap doet niets."))
         case Split():
             u += _split_regels(a, ctx, df)
+    if a.type in F4_TYPES:
+        u += _f4_regels(a, ctx, df)
     return u or [Uitkomst("goed", "Geen bezwaren gevonden in de regels.")]
+
+
+def _num(s: pd.Series) -> bool:
+    return pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s)
+
+
+def _f4_regels(a, ctx: ReviewContext, df: pd.DataFrame) -> list[Uitkomst]:
+    """F4: regels uit het stappenplan. Lekken kan hier niet meer: de pipeline wordt alleen op train gefit."""
+    plan = ctx.plan or PrepPlan(ctx.data.target)
+    try:
+        plan._valideer(a, df)
+    except PrepPlanFout as e:
+        return [Uitkomst("fout", str(e))]
+    k = getattr(a, "kolom", None)
+    prof = ctx.profielen.get(k) if k else None
+    mech = getattr(prof, "na_mechanisme", None)
+    s = df[k] if k else None
+    u: list[Uitkomst] = []
+    match a:
+        case Imputeer(methode=m):
+            n, frac = int(s.isna().sum()), float(s.isna().mean())
+            if n == 0:
+                u.append(Uitkomst("twijfel", f"In '{k}' ontbreekt in train niets. Het vangnet (mediaan) dekt onverwachte NA al."))
+            if prof is None:
+                u.append(Uitkomst("twijfel", f"Er is geen F3-profiel van '{k}': het NA-mechanisme is niet onderzocht.", ("fimd_mech",)))
+            if m == "gemiddelde" and _num(s) and abs(s.skew()) > 1:
+                u.append(Uitkomst("twijfel", f"'{k}' is scheef ({s.skew():.1f}); de mediaan is robuuster dan het gemiddelde.", ("fimd_simple",)))
+            if m in EENVOUDIG and frac > .10:
+                u.append(Uitkomst("twijfel", f"Er ontbreekt {frac:.0%}. Eén vaste waarde verkleint de spreiding en verzwakt verbanden.", ("fimd_simple",)))
+            if mech == "MAR" and m in EENVOUDIG:
+                u.append(Uitkomst("twijfel", "Het ontbreken hangt samen met andere kolommen (MAR). knn of iteratief imputeren gebruikt die kolommen.", ("fimd_mech", "knn")))
+            if mech == "MNAR" and not plan._van(k, NAIndicator):
+                u.append(Uitkomst("twijfel", "Het ontbreken zegt iets over de waarde zelf (MNAR). Voeg eerst een NA-indicator toe.", ("indicator", "fes_missing")))
+            if m == "constante" and _num(s) and not plan._van(k, NAIndicator):
+                u.append(Uitkomst("twijfel", "Een vaste getalwaarde lijkt op een echte waarde. Gebruik dit alleen samen met een NA-indicator.", ("indicator",)))
+            if m == "modus" and _num(s):
+                u.append(Uitkomst("twijfel", "De modus is bedoeld voor categorieën; voor getallen is de mediaan meestal beter.", ("impute",)))
+        case NAIndicator():
+            if not s.isna().any():
+                u.append(Uitkomst("twijfel", f"In '{k}' ontbreekt in train niets; de indicator is dan overal 0."))
+            elif mech == "MCAR":
+                u.append(Uitkomst("goed", "Mag, maar bij toevallig ontbreken (MCAR) voegt de indicator weinig toe.", ("indicator",)))
+        case Afkappen():
+            q1, q3 = s.quantile(.25), s.quantile(.75)
+            if not ((s < q1 - 1.5 * (q3 - q1)) | (s > q3 + 1.5 * (q3 - q1))).any():
+                u.append(Uitkomst("twijfel", f"Volgens de IQR-regel heeft '{k}' in train geen uitschieters; deze stap doet niets.", ("tukey",)))
+            if not ctx.data.onderzocht(("uitschieters", "verdeling"), k):
+                u.append(Uitkomst("twijfel", f"Niet onderzocht: bekijk eerst de uitschieters of de verdeling van '{k}'.", ("tukey",)))
+            elif not ctx.po_gevraagd_over(k):
+                u.append(Uitkomst("twijfel", f"Zijn de uitschieters in '{k}' fouten of echte waarden? Vraag het de PO; echte waarden afkappen verandert de data.", ("tukey",)))
+        case LogTransformatie():
+            if abs(s.skew()) < 1:
+                u.append(Uitkomst("twijfel", f"'{k}' is nauwelijks scheef ({s.skew():.1f}); een log-transformatie maakt het model vooral lastiger uit te leggen.", ("fes_numeric",)))
+        case OneHot():
+            if s.nunique() > 15:
+                u.append(Uitkomst("twijfel", f"'{k}' heeft {s.nunique()} categorieën; one-hot maakt veel kolommen. Target encoding kan beter.", ("te",)))
+        case TargetEncoding():
+            if s.nunique() <= 5:
+                u.append(Uitkomst("twijfel", f"'{k}' heeft maar {s.nunique()} categorieën; one-hot is eenvoudiger en uitlegbaarder.", ("ohe",)))
+        case Schaal(kolommen=ks, methode=m):
+            doel = ks if isinstance(ks, list) else [c for c in plan.features(df) if _num(df[c])]
+            if m == "minmax":
+                sterk = [c for c in doel if ((df[c] - df[c].median()).abs() > 3 * (df[c].quantile(.75) - df[c].quantile(.25))).any()]
+                if sterk:
+                    u.append(Uitkomst("twijfel", f"Sterke uitschieters in {sterk}: min-max drukt de gewone waarden dan samen. Standaard of robuust werkt beter.", ("prep",)))
+        case VerwijderKolom():
+            id_achtig = "id" in k.lower() or (not _num(s) and s.nunique() > .5 * s.notna().sum())
+            if not id_achtig and s.isna().mean() <= .5 and _num(s):
+                y = df[ctx.data.target]
+                y = y if _num(y) else (y == y.value_counts().index[-1]).astype(float)
+                if abs(s.corr(y)) > .3:
+                    u.append(Uitkomst("twijfel", f"'{k}' hangt samen met de target (r = {s.corr(y):.2f}). Weet je zeker dat je hem weg wilt?", ("esl",)))
+    return u
 
 
 def _split_regels(a: Split, ctx: ReviewContext, df: pd.DataFrame) -> list[Uitkomst]:

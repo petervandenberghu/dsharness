@@ -163,6 +163,16 @@ class _Vraag:
         self.klaar(tekst)
 
 
+class _PlanSamenvatting:
+    """Kleine wrapper zodat het beslislog het F4-plan als rapport kan opslaan."""
+
+    def __init__(self, **velden):
+        self.velden = velden
+
+    def model_dump(self, mode: str = "json") -> dict:
+        return self.velden
+
+
 class Cockpit:
     def __init__(self, log: Beslislog | None = None):
         self.log = log or Beslislog()
@@ -195,6 +205,19 @@ class Cockpit:
           <div style="overflow-x:auto"><table class="dsh-tabel"><thead><tr><th>kolom</th><th>NA</th><th>mechanisme</th>
           <th>verdeling</th><th>uitschieters</th><th>relatie met target</th></tr></thead><tbody>{rijen}</tbody></table></div>
           <p style="margin:10px 0 4px"><b>Voor F4</b></p><ul style="margin:0;padding-left:18px">{punten}</ul></div>"""))
+
+    def toon_plan(self, plan, proef: dict) -> None:
+        from .acties import omschrijf
+        e = html.escape
+        self.log.schrijf_rapport("F4", _PlanSamenvatting(stappen=[omschrijf(s) for s in plan.stappen], **proef))
+        stappen = "".join(f"<li>{e(omschrijf(s))}</li>" for s in plan.stappen)
+        vangnet = (f"<p class='dsh-meta' style='margin:8px 0 0'>Vangnet (mediaan, alleen voor onverwachte NA in nieuwe data): "
+                   f"{e(', '.join(proef['vangnet']))}</p>") if proef["vangnet"] else ""
+        self._voeg_toe(w.HTML(CSS + f"""<div class="dsh-kaart" style="--dsh-k:#2C7A57">
+          <div class="dsh-meta">F4 · Preparatie-pipeline (gefit op train)</div>
+          <h3>Model-klaar: {proef['rijen']} rijen × {len(proef['kolommen'])} features</h3>
+          <ol style="margin:0;padding-left:20px">{stappen}</ol>
+          <p class="dsh-meta" style="margin:8px 0 0">Features: {e(', '.join(proef['kolommen']))}</p>{vangnet}</div>"""))
 
     # ---------- async ----------
     async def vraag_akkoord(self, v: Voorstel, figuur: Any = None) -> Besluit:

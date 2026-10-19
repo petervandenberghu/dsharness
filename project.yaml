@@ -16,3 +16,4 @@ modellen:
   data_scout: [google:gemini-3.1-flash-lite, ollama:gemma4-16k]
   reviewer: [google:gemini-3-flash-preview, ollama:gemma4-16k]
   verkenner: [google:gemini-3.1-flash-lite, ollama:gemma4-16k]
+  prep_engineer: [google:gemini-3.1-flash-lite, ollama:gemma4-16k]

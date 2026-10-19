@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from .acties import Actie, omschrijf
+from .acties import F1_TYPES, Actie, omschrijf
 from .bronnen import BronSleutel, bron
 from .contracts import ReviewOordeel, Voorstel
 
@@ -33,9 +33,11 @@ class ConceptVoorstel(BaseModel):
     alternatief: str | None = None
 
     def naar_voorstel(self, id: str, fase: str, review: ReviewOordeel) -> Voorstel:
-        kolom = getattr(self.actie, "kolom", None) or getattr(self.actie, "groep_kolom", None) or getattr(self.actie, "tijd_kolom", None)
+        a = self.actie
+        kolom = getattr(a, "kolom", None) or getattr(a, "groep_kolom", None) or getattr(a, "tijd_kolom", None)
+        kolommen = [kolom] if kolom else (a.kolommen if isinstance(getattr(a, "kolommen", None), list) else [])
         return Voorstel(
-            id=id, fase=fase, actie=omschrijf(self.actie), kolommen=[kolom] if kolom else [],
+            id=id, fase=fase, actie=omschrijf(self.actie), kolommen=kolommen,
             observatie=self.observatie, onderzocht=self.onderzocht, po_kennis=self.po_kennis,
             plan=self.plan, waarom=self.waarom, bronnen=[bron(s) for s in self.bron_sleutels],
             alternatief=self.alternatief, review=review, spec=self.actie,
@@ -49,6 +51,8 @@ class Verkenningsrapport(BaseModel):
 
     @model_validator(mode="after")
     def _een_split(self) -> "Verkenningsrapport":
+        if andere := [v.actie.type for v in self.voorstellen if v.actie.type not in F1_TYPES]:
+            raise ValueError(f"In F1 mag je alleen vaste regels en een split voorstellen, niet: {andere}.")
         n = sum(v.actie.type == "split" for v in self.voorstellen)
         if n != 1:
             raise ValueError(f"Het rapport moet precies één split-voorstel bevatten (nu {n}).")

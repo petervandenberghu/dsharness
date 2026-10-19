@@ -11,6 +11,7 @@ class PO(Protocol):
     async def vraag_akkoord(self, v: Voorstel, figuur: Any = None) -> Besluit: ...
     def melding(self, tekst: str) -> None: ...
     def toon_rapport(self, rapport: Any) -> None: ...
+    def toon_plan(self, plan: Any, proef: dict) -> None: ...
 
 
 def standaard_besluit(v: Voorstel) -> Besluit:
@@ -29,6 +30,7 @@ class ScriptedPO:
         self.voorstellen: list[tuple[Voorstel, Besluit]] = []
         self.meldingen: list[str] = []
         self.rapporten: list[Any] = []
+        self.plannen: list[tuple[Any, dict]] = []
 
     async def vraag_po(self, vraag: str, context: str = "") -> str:
         tekst = f"{vraag} {context}".lower()
@@ -47,3 +49,6 @@ class ScriptedPO:
 
     def toon_rapport(self, rapport: Any) -> None:
         self.rapporten.append(rapport)
+
+    def toon_plan(self, plan: Any, proef: dict) -> None:
+        self.plannen.append((plan, proef))

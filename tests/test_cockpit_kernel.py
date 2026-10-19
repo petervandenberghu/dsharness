@@ -80,3 +80,24 @@ print(len(c.feed.children), 'bouwjaar' in c.feed.children[-1].value, '&lt;b&gt;'
     k.stdout.clear()
     assert k.voer_uit(code), k.errors
     assert "".join(k.stdout).strip() == "1 True True ['F3']"
+
+
+def test_plankaart(k):
+    code = """
+from dsharness.datasets import huizen
+from dsharness.data import DataLaag
+from dsharness.prep_plan import PrepPlan
+from dsharness.acties import Imputeer, OneHot, Schaal
+o = huizen(); d = DataLaag(o.df, target=o.target)
+for a in o.juiste_f1: d.voer_uit(a)
+df = d.zicht(); p = PrepPlan(o.target)
+for s in [Imputeer(kolom="kamers", methode="mediaan"), Imputeer(kolom="bouwjaar", methode="knn"),
+          Imputeer(kolom="oppervlakte", methode="mediaan"), OneHot(kolom="wijk"), Schaal()]:
+    p.voeg_toe(s, df)
+c.toon_plan(p, p.proef(df))
+html = c.feed.children[-1].value
+print('Model-klaar' in html, 'afstand_km' in html, [f for f, _ in log.lees_rapporten()])
+"""
+    k.stdout.clear()
+    assert k.voer_uit(code), k.errors
+    assert "".join(k.stdout).strip() == "True True ['F4']"

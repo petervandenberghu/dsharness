@@ -19,11 +19,20 @@ CATALOGUS: dict[str, tuple[str, str]] = {
     "geron": ("Géron (2022), Hands-On ML hfst. 2: testset vroeg apart zetten", "https://github.com/ageron/handson-ml3/blob/main/02_end_to_end_machine_learning_project.ipynb"),
     "fpp": ("Hyndman & Athanasopoulos, FPP3 §5.10: tijdreeks-cross-validatie", "https://otexts.com/fpp3/tscv.html"),
     "tukey": ("IQR-regel voor uitschieters (Tukey's fences)", "https://en.wikipedia.org/wiki/Outlier#Tukey%27s_fences"),
+    "knn": ("scikit-learn: KNNImputer", "https://scikit-learn.org/stable/modules/generated/sklearn.impute.KNNImputer.html"),
+    "indicator": ("scikit-learn: MissingIndicator", "https://scikit-learn.org/stable/modules/generated/sklearn.impute.MissingIndicator.html"),
+    "prep": ("scikit-learn: Preprocessing data (schalen)", "https://scikit-learn.org/stable/modules/preprocessing.html"),
+    "ohe": ("scikit-learn: OneHotEncoder", "https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html"),
+    "te": ("scikit-learn: TargetEncoder (met cross-fitting)", "https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.TargetEncoder.html"),
+    "pipe": ("scikit-learn: Pipelines", "https://scikit-learn.org/stable/modules/compose.html"),
+    "fes_numeric": ("Kuhn & Johnson (2019), FES hfst. 6: numerieke features", "https://bookdown.org/max/FES/engineering-numeric-predictors.html"),
+    "esl": ("Hastie et al. (2009), ESL §7.10.2: de foute en goede manier van cross-validatie", "https://hastie.su.domains/ElemStatLearn/"),
 }
 
 BronSleutel = Literal[
     "crisp", "pitfalls", "impute", "cv", "tts", "fimd_mech", "fimd_simple",
     "fes_missing", "kapoor", "kaufman", "geron", "fpp", "tukey",
+    "knn", "indicator", "prep", "ohe", "te", "pipe", "fes_numeric", "esl",
 ]
 
 
