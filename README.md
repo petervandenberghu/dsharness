@@ -2,7 +2,7 @@
 
 Multi-agent data science harness met een cockpit-notebook. De PO (gebruiker) keurt elk voorstel goed, past het aan, wijst het af of overrulet het. Alle besluiten en vragen komen in een beslislog.
 
-**Status:** F1 (eerste blik) → F2 (vaste regels) → split → F3 (verkennen op train) → F4 (preparatie-pipeline) werkt, met de Data Scout, de Reviewer, de Verkenner en de Prep Engineer.
+**Status:** F1 (eerste blik) → F2 (vaste regels) → split → F3 (verkennen op train) → F4 (preparatie-pipeline) → F5 (modelleren met cross-validatie) werkt, met de Data Scout, de Reviewer, de Verkenner, de Prep Engineer en de Modeler.
 
 ## Starten
 ```
@@ -23,6 +23,8 @@ Met `data_policy: local_only` weigert de harness cloudmodellen.
 | `scout.py` | Data Scout (F1): verkent, vraagt de PO, stelt vaste regels en een split voor |
 | `prep.py` | Prep Engineer (F4): stelt preparatiestappen voor tot de pipeline model-klaar is |
 | `prep_plan.py` | Goedgekeurde F4-stappen → één sklearn-Pipeline; volgorde per kolom ligt vast, fit alleen op train |
+| `modeler.py` | Modeler (F5): CV-opzet, baseline, experimenten en modelkeuze, in rondes |
+| `lab.py` | Voert F5 uit: cross-validatie op train met de F4-pipeline binnen elke fold |
 | `verkenner.py` | Verkenner (F3): kolomprofielen op train; NA-mechanisme pas na NA-patroon én een vraag aan de PO |
 | `reviewer.py` | Reviewer: vaste regels in code plus optioneel een LLM, die alleen strenger mag zijn |
 | `workflow.py` | Volgorde en gates in gewone Python: review → herzien → PO → uitvoeren |
@@ -36,6 +38,7 @@ uv run pytest                                   # zonder netwerk
 uv run python scripts/eval_scout.py <scout-model> <reviewer-model|->
 uv run python scripts/eval_verkenner.py <model> [datasets]
 uv run python scripts/eval_prep.py <model> [datasets]
+uv run python scripts/eval_modeler.py <model> [datasets]
 ```
 De eval laat de Scout los op de vier oefendatasets, met een gesimuleerde PO. Hij meet welke valkuilen gevonden worden en of de split klopt.
 
