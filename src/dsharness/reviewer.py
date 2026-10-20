@@ -10,13 +10,14 @@ from typing import Any, Literal
 import pandas as pd
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import FallbackExceptionGroup, ModelAPIError, UnexpectedModelBehavior
 
 from .acties import (F4_TYPES, F5_TYPES, F6_TYPES, Afkappen, CVOpzet, Eindtest, Experiment, KiesModel, Imputeer, LogTransformatie, NAIndicator, OneHot, OnmogelijkNaarNA, Schaal, Split,
                      TargetEncoding, VerwijderDubbelen, VerwijderKolom, VerwijderZonderTarget)
 from .bronnen import BronSleutel, bron, catalogus_tekst
 from .contracts import ReviewOordeel
 from .data import DataLaag
-from .modellen import maak_model
+from .modellen import korte_fout, maak_model
 from .lab import HOGER_IS_BETER, LabFout
 from .prep_plan import EENVOUDIG, PrepPlan, PrepPlanFout
 from .rapport import Bevinding, ConceptVoorstel
@@ -253,8 +254,14 @@ class Reviewer:
     async def beoordeel(self, c: ConceptVoorstel, ctx: ReviewContext) -> ReviewOordeel:
         uitkomsten = regels(c, ctx)
         if self.llm is not None:
-            o = (await self.llm.run(self._prompt(c, ctx, uitkomsten))).output
-            uitkomsten.append(Uitkomst(o.oordeel, o.toelichting, tuple(o.bron_sleutels)))
+            try:
+                o = (await self.llm.run(self._prompt(c, ctx, uitkomsten))).output
+                uitkomsten.append(Uitkomst(o.oordeel, o.toelichting, tuple(o.bron_sleutels)))
+            except (ModelAPIError, FallbackExceptionGroup, UnexpectedModelBehavior) as e:
+                # De vaste regels zijn bindend; de LLM-laag is een extra. Valt die weg, dan alleen de regels, zichtbaar.
+                oordeel = combineer(uitkomsten)
+                return oordeel.model_copy(update={"toelichting": oordeel.toelichting
+                                                  + f" (Alleen de vaste regels: de LLM-review was niet beschikbaar, {korte_fout(e)}.)"})
         return combineer(uitkomsten)
 
     @staticmethod

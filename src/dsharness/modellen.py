@@ -64,6 +64,20 @@ class GeduldigModel(WrapperModel):
         raise AssertionError("onbereikbaar")
 
 
+def korte_fout(e: BaseException) -> str:
+    """Eén leesbare regel voor een modelfout, ook als meerdere fallback-modellen faalden."""
+    if isinstance(e, BaseExceptionGroup):
+        return "; ".join(korte_fout(x) for x in e.exceptions)
+    if isinstance(e, LimietBereikt):
+        return f"{e.model_name}: daglimiet bereikt"
+    if isinstance(e, ModelHTTPError):
+        soort = {429: "limiet bereikt", 503: "overbelast"}.get(e.status_code, "fout")
+        return f"{e.model_name}: {soort} ({e.status_code})"
+    if isinstance(e, ModelAPIError):
+        return f"{e.model_name}: {e.message[:80]}"
+    return f"{type(e).__name__}: {str(e)[:120]}"
+
+
 def _een(naam: str, max_pogingen: int, bij_wachten) -> GeduldigModel:
     if naam.startswith("ollama:"):
         os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434/v1")

@@ -10,10 +10,10 @@ data_policy: cloud_allowed
 
 # Per rol één model, of een lijst: bij aanhoudende fouten (overbelast, daglimiet) neemt het volgende het over.
 # De gratis Gemini-laag heeft per model een eigen dagquotum; daarom heeft elke rol een andere eerste keus.
-# Reviewer leeg laten = alleen de vaste regels.
+# Reviewer leeg laten = alleen de vaste regels. Valt de LLM-laag van de Reviewer weg, dan gelden alleen de regels.
 modellen:
-  data_scout: [google:gemini-3.1-flash-lite, google:gemini-flash-lite-latest, google:gemini-3.5-flash-lite]
-  reviewer: [google:gemini-3-flash-preview, google:gemini-flash-latest, google:gemini-3.5-flash]
-  verkenner: [google:gemini-3.5-flash-lite, google:gemini-3.1-flash-lite, google:gemini-flash-lite-latest]
-  prep_engineer: [google:gemini-3.5-flash, google:gemini-3-flash-preview, google:gemini-flash-latest]
-  modeler: [google:gemini-flash-latest, google:gemini-3.5-flash, google:gemini-3-flash-preview]
+  data_scout: [google:gemini-3.1-flash-lite, google:gemini-flash-lite-latest, google:gemini-3.5-flash-lite, google:gemini-3.5-flash]
+  reviewer: [google:gemini-3-flash-preview, google:gemini-flash-latest, google:gemini-3.5-flash, google:gemini-3.5-flash-lite]
+  verkenner: [google:gemini-3.5-flash-lite, google:gemini-3.1-flash-lite, google:gemini-flash-lite-latest, google:gemini-3.5-flash]
+  prep_engineer: [google:gemini-3.5-flash, google:gemini-3-flash-preview, google:gemini-flash-latest, google:gemini-3.1-flash-lite]
+  modeler: [google:gemini-flash-latest, google:gemini-3.5-flash, google:gemini-3-flash-preview, google:gemini-flash-lite-latest]

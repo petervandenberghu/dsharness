@@ -84,3 +84,25 @@ def test_llm_kan_strenger_maken():
     ctx.data.noteer("tel_waarden", "patient_id")
     r = oordeel(Split(methode="groep", groep_kolom="patient_id"), ctx, model=_llm("twijfel"))
     assert r.oordeel == "twijfel" and "LLM zegt twijfel" in r.toelichting
+
+
+def test_llm_valt_weg_dan_alleen_regels():
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    def plat(messages, info):
+        raise ModelHTTPError(400, "gemini-x", body="kapot")  # niet tijdelijk: geen retry, direct fout
+    ctx = ctx_van(patient)
+    r = oordeel(Split(methode="willekeurig"), ctx, model=FunctionModel(plat))
+    assert r.oordeel == "fout" and "Alleen de vaste regels" in r.toelichting and "gemini-x" in r.toelichting
+
+
+def test_korte_fout_en_foutkaart():
+    from pydantic_ai.exceptions import FallbackExceptionGroup, ModelHTTPError
+
+    from dsharness.cockpit import foutkaart
+    from dsharness.modellen import LimietBereikt, korte_fout
+    groep = FallbackExceptionGroup("alle modellen", [LimietBereikt("gemini-a", "wacht 16 uur"),
+                                                    ModelHTTPError(503, "gemini-b", body="druk")])
+    assert korte_fout(groep) == "gemini-a: daglimiet bereikt; gemini-b: overbelast (503)"
+    h = foutkaart(groep)
+    assert "niet beschikbaar" in h and "<details>" in h and "project.yaml" in h

@@ -175,6 +175,28 @@ class _Vragen:
         self.klaar(teksten)
 
 
+def foutkaart(e: BaseException) -> str:
+    """Korte uitleg bovenaan, de volledige traceback inklapbaar eronder."""
+    from pydantic_ai.exceptions import ModelAPIError
+
+    from .modellen import korte_fout
+
+    modelfout = isinstance(e, ModelAPIError) or (isinstance(e, BaseExceptionGroup) and all(
+        isinstance(x, ModelAPIError) for x in e.exceptions))
+    if modelfout:
+        kop = "De modellen zijn op dit moment niet beschikbaar"
+        uitleg = ("Wat je kunt doen: wacht tot het quotum vernieuwd is (gratis Gemini: elke dag), of zet in project.yaml "
+                  "een ander model voor deze rol. Voer daarna de startcel opnieuw uit: afgeronde fases worden overgeslagen.")
+    else:
+        kop, uitleg = "De workflow is gestopt door een fout", "De technische details staan hieronder."
+    tb = "".join(traceback.format_exception(e))
+    return CSS + f"""<div class="dsh-kaart" style="--dsh-k:#B42318">
+      <div class="dsh-meta">Fout</div><h3>{html.escape(kop)}</h3>
+      <p style="margin:0 0 6px">{html.escape(korte_fout(e))}</p><p class="dsh-meta" style="margin:0 0 6px">{html.escape(uitleg)}</p>
+      <details><summary class="dsh-meta" style="cursor:pointer">Technische details</summary>
+      <pre style="font-size:11px;white-space:pre-wrap;max-height:300px;overflow:auto">{html.escape(tb)}</pre></details></div>"""
+
+
 class _PlanSamenvatting:
     """Kleine wrapper zodat het beslislog het F4-plan als rapport kan opslaan."""
 
@@ -313,8 +335,7 @@ class Cockpit:
             if t.cancelled():
                 self.melding("Workflow gestopt.")
             elif t.exception() is not None:
-                tb = "".join(traceback.format_exception(t.exception()))
-                self._voeg_toe(w.HTML(f'<pre style="color:#B42318">{html.escape(tb)}</pre>'))
+                self._voeg_toe(w.HTML(foutkaart(t.exception())))
 
         taak.add_done_callback(_klaar)
         return taak
