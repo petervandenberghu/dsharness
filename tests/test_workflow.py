@@ -22,14 +22,15 @@ SPLIT_GOED = {**SPLIT_FOUT, "actie": {"type": "split", "methode": "groep", "groe
               "waarom": "Dezelfde patiënt mag niet in train én test.", "bron_sleutels": ["cv"]}
 
 
-def scout_script(herzien: dict):
-    """Eerste run: verken en stel een foute split voor. Herziening: lever `herzien`."""
+def scout_script(herzien: dict, koppig: bool = False):
+    """Eerste run: verken en stel een foute split voor. Herziening: lever `herzien`.
+    `koppig`: negeert de terugkoppeling over ontbrekende bevindingen."""
     def f(messages, info: AgentInfo) -> ModelResponse:
-        return _stap(messages, info, herzien)
+        return _stap(messages, info, herzien, koppig)
     return FunctionModel(f)
 
 
-def _stap(messages, info: AgentInfo, herzien: dict) -> ModelResponse:
+def _stap(messages, info: AgentInfo, herzien: dict, koppig: bool = False) -> ModelResponse:
     uit = info.output_tools[0]
     if "samenvatting" not in uit.parameters_json_schema["properties"]:
         return ModelResponse(parts=[ToolCallPart(uit.name, herzien)])
@@ -41,16 +42,16 @@ def _stap(messages, info: AgentInfo, herzien: dict) -> ModelResponse:
         ])
     bevindingen = [{"soort": "structuur_groep", "kolom": "patient_id", "beschrijving": "3 bezoeken per patiënt", "bewijs": "tel_waarden"},
                    {"soort": "onmogelijke_waarde", "kolom": "glucose", "beschrijving": "5 keer 0", "bewijs": "beschrijf"}]
-    if any(isinstance(p, RetryPromptPart) for m in messages for p in getattr(m, "parts", [])):  # harness: niet volledig
+    if not koppig and any(isinstance(p, RetryPromptPart) for m in messages for p in getattr(m, "parts", [])):  # harness: niet volledig
         bevindingen += [{"soort": "na", "kolom": k, "beschrijving": "NA's", "bewijs": "na_telling"} for k in ("bmi", "bloeddruk")]
     return ModelResponse(parts=[ToolCallPart(uit.name, {
         "samenvatting": "Herhaalde patiënten en glucose 0.", "bevindingen": bevindingen, "voorstellen": [GLUCOSE, SPLIT_FOUT]})])
 
 
-def draai(po, herzien=SPLIT_GOED):
+def draai(po, herzien=SPLIT_GOED, koppig=False):
     o = patient()
     data = DataLaag(o.df, target=o.target)
-    team = Team(scout=maak_scout(scout_script(herzien)), reviewer=Reviewer())
+    team = Team(scout=maak_scout(scout_script(herzien, koppig)), reviewer=Reviewer())
     uitkomst = asyncio.run(eerste_blik_tot_split(po, data, doel=o.doel, taak=o.taak, team=team))
     return data, uitkomst
 
@@ -105,3 +106,12 @@ def test_scout_moet_rapport_aanvullen():
     data, uitkomst = draai(po)
     soorten = {(b.soort, b.kolom) for b in uitkomst.rapport.bevindingen}
     assert ("na", "bmi") in soorten and ("na", "bloeddruk") in soorten
+
+
+def test_harness_vult_aan_als_scout_koppig_blijft():
+    po = ScriptedPO(patient().po_kennis)
+    data, uitkomst = draai(po, koppig=True)
+    aangevuld = [b for b in uitkomst.rapport.bevindingen if b.bewijs.startswith("aangevuld door de harness")]
+    assert {(b.soort, b.kolom) for b in aangevuld} == {("na", "bmi"), ("na", "bloeddruk")}
+    assert any("vulde 2 bevinding" in m for m in po.meldingen)
+    assert data.gesplitst  # de keten loopt door
