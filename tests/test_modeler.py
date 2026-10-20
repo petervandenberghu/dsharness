@@ -147,3 +147,18 @@ def test_f5_workflow():
     assert [v.id for v, _ in po.voorstellen] == ["F5-001", "F5-002", "F5-003", "F5-004"]
     assert po.voorstellen[0][0].review.oordeel == "goed"  # PO is gevraagd naar de maat
     assert len(po.resultaten) == 2 and "Gekozen: lin" in po.resultaten[-1]
+
+
+def test_model_gelijk_aan_baseline_wordt_gesignaleerd():
+    o, d, p = klaar_voor_f5(huizen)
+    lab = Lab(d, p, o.taak)
+    ctx = ReviewContext(data=d, taak=o.taak, plan=p, lab=lab)
+    lab.voer_uit(CVOpzet(methode="kfold", metriek="rmse"))
+    lab.voer_uit(Experiment(naam="b", model="baseline"))
+    voorstel = Experiment(naam="gb", model="gradient_boosting", parameters={"max_depth": 2})
+    assert "min_samples_leaf" in review(ctx, voorstel).toelichting  # vooraf: te weinig rijen per fold
+    tekst = lab.voer_uit(voorstel)
+    assert "gelijk aan de baseline" in tekst and "GELIJK AAN BASELINE" in lab.overzicht()
+    assert "Eerder presteerde gradient_boosting" in review(ctx, Experiment(naam="gb2", model="gradient_boosting")).toelichting
+    tekst = lab.voer_uit(Experiment(naam="gb3", model="gradient_boosting", parameters={"min_samples_leaf": 3}))
+    assert "gelijk aan de baseline" not in tekst and lab.resultaten["gb3"].gemiddelde < lab.resultaten["b"].gemiddelde

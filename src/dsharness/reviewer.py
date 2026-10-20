@@ -311,8 +311,17 @@ def _f5_regels(a, ctx: ReviewContext, df: pd.DataFrame) -> list[Uitkomst]:
             if not any(w in (v + " " + an).lower() for v, an in ctx.po_vragen for w in woorden):
                 u.append(Uitkomst("twijfel", "De evaluatiemaat is een businesskeuze. Vraag de PO welke fouten het zwaarst wegen "
                                              "(bijv. een gemist geval tegenover een vals alarm).", ("metrics",)))
-        case Experiment(model=mod, gebalanceerd=g):
+        case Experiment(model=mod, gebalanceerd=g, parameters=par):
             plan = lab.plan
+            per_fold = int(lab.data.n_train * (lab.cv.folds - 1) / lab.cv.folds) if lab.cv else lab.data.n_train
+            if mod == "gradient_boosting" and per_fold < 100 and (par.get("min_samples_leaf") or 20) >= 20:
+                u.append(Uitkomst("twijfel", f"Gradient boosting heeft standaard min_samples_leaf=20. Met ~{per_fold} rijen per "
+                                             "trainfold kan het dan nauwelijks splitsen en voorspelt het vooral het gemiddelde. "
+                                             "Zet min_samples_leaf lager (bijv. 3 à 5).", ("fes_numeric",)))
+            gelijk = [r.naam for r in lab.resultaten.values() if r.model == mod and lab.gelijk_aan_baseline(r)]
+            if gelijk:
+                u.append(Uitkomst("twijfel", f"Eerder presteerde {mod} precies gelijk aan de baseline ({', '.join(gelijk)}). "
+                                             "Pas de instellingen aan, anders levert dit experiment niets nieuws op."))
             if mod in ("lineair", "knn") and not any(isinstance(s, Schaal) for s in plan.stappen):
                 u.append(Uitkomst("twijfel", f"{mod} is gevoelig voor de schaal van features; de pipeline schaalt niet.", ("prep",)))
             if g and m is not None and m >= .35:

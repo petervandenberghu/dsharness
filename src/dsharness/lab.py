@@ -78,6 +78,12 @@ class Lab:
         hoger = HOGER_IS_BETER.get(self.cv.metriek, True)
         return (max if hoger else min)(self.resultaten.values(), key=lambda r: r.gemiddelde)
 
+    def gelijk_aan_baseline(self, r: Resultaat) -> bool:
+        """Scoort dit model in elke fold hetzelfde als de baseline? Dan leert het niets (bijv. te weinig rijen om te splitsen)."""
+        b = self.baseline()
+        return b is not None and r.model != "baseline" and len(b.folds) == len(r.folds) and all(
+            abs(x - y) < 1e-9 for x, y in zip(b.folds, r.folds))
+
     def baseline(self) -> Resultaat | None:
         return next((self.resultaten[n] for n, e in self.experimenten.items() if e.model == "baseline" and n in self.resultaten), None)
 
@@ -173,7 +179,11 @@ class Lab:
                 r = self._draai(actie)
                 self.experimenten[actie.naam] = actie
                 self.resultaten[actie.naam] = r
-                return f"{omschrijf(actie)}: {r.metriek} = {r.gemiddelde:.3f} ± {r.sd:.3f} (train {r.train:.3f})."
+                tekst = f"{omschrijf(actie)}: {r.metriek} = {r.gemiddelde:.3f} ± {r.sd:.3f} (train {r.train:.3f})."
+                if self.gelijk_aan_baseline(r):
+                    tekst += (" Let op: precies gelijk aan de baseline; dit model leert niets. Mogelijk zijn er te weinig "
+                              "rijen per fold voor deze instellingen (bijv. min_samples_leaf).")
+                return tekst
             case KiesModel(experiment=n):
                 self.gekozen = n
                 return f"Gekozen voor F6: '{n}'."
@@ -207,7 +217,8 @@ class Lab:
             return "Nog geen CV-opzet."
         regels = [f"CV: {omschrijf(self.cv)}" + (f"; positieve klasse '{self.positief}'" if self.positief else "")]
         for r in sorted(self.resultaten.values(), key=lambda r: r.gemiddelde, reverse=HOGER_IS_BETER.get(self.cv.metriek, True)):
-            regels.append(f"- {r.naam}: {r.metriek} {r.gemiddelde:.3f} ± {r.sd:.3f}, train {r.train:.3f} ({r.omschrijving})")
+            let_op = " [GELIJK AAN BASELINE: leert niets]" if self.gelijk_aan_baseline(r) else ""
+            regels.append(f"- {r.naam}: {r.metriek} {r.gemiddelde:.3f} ± {r.sd:.3f}, train {r.train:.3f} ({r.omschrijving}){let_op}")
         if self.gekozen:
             regels.append(f"Gekozen: {self.gekozen}")
         return "\n".join(regels)

@@ -227,7 +227,8 @@ class Cockpit:
         rijen = "".join(
             f"<tr style='{'font-weight:700' if r.naam == lab.gekozen else ''}'><td>{e(r.naam)}{' ✓' if r.naam == lab.gekozen else ''}</td>"
             f"<td>{e(r.omschrijving.split(': ', 1)[-1])}</td><td>{r.gemiddelde:.3f} ± {r.sd:.3f}</td><td>{r.train:.3f}</td>"
-            f"<td>{'beste' if beste and r.naam == beste.naam else ''}</td></tr>"
+            f"<td>{'beste' if beste and r.naam == beste.naam else ''}"
+            f"{'<span style=color:#A86300>= baseline: leert niets</span>' if lab.gelijk_aan_baseline(r) else ''}</td></tr>"
             for r in sorted(lab.resultaten.values(), key=lambda r: r.gemiddelde, reverse=lab.beter(1, 0)))
         kop = f"Gekozen voor F6: {lab.gekozen}" if lab.gekozen else f"{len(lab.resultaten)} experiment(en)"
         self._voeg_toe(w.HTML(CSS + f"""<div class="dsh-kaart" style="--dsh-k:#2F6FAF;max-width:1000px">
