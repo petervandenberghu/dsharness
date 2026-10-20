@@ -49,12 +49,10 @@ en een MLflow-database met alle experimenten, de eindtest en het model in de reg
 uv run dsharness serve resultaat            # API op http://127.0.0.1:8000/docs
 uv run dsharness rooktest resultaat         # API geeft hetzelfde als het model, ongeldige invoer wordt geweigerd
 uv run mlflow ui --backend-store-uri sqlite:///resultaat/mlflow.db
-docker build -f deploy/Dockerfile -t dsharness-api . && docker run --rm -p 8000:8000 dsharness-api
 ```
 - `POST /voorspel` met `{"rijen": [...]}`. Een ontbrekende kolom of een verkeerd type geeft HTTP 422; een onbekende
   categorie, een waarde buiten het bereik van train of een ontbrekende waarde geeft een waarschuwing, wel een voorspelling.
-- Het resultaat-notebook draait de rooktest mee. De container bevat alleen wat nodig is om te voorspellen
-  (versies vast in `deploy/requirements-serve.txt`).
+- Het resultaat-notebook draait de rooktest mee.
 - MLflow slaat het model op met cloudpickle, net als `model.joblib`: laad het alleen uit een bron die je vertrouwt.
 
 ## Tests en evals
