@@ -13,6 +13,7 @@ class PO(Protocol):
     def toon_rapport(self, rapport: Any) -> None: ...
     def toon_plan(self, plan: Any, proef: dict) -> None: ...
     def toon_resultaten(self, lab: Any) -> None: ...
+    def toon_eindtest(self, lab: Any) -> None: ...
 
 
 def standaard_besluit(v: Voorstel) -> Besluit:
@@ -33,6 +34,7 @@ class ScriptedPO:
         self.rapporten: list[Any] = []
         self.plannen: list[tuple[Any, dict]] = []
         self.resultaten: list[str] = []
+        self.eindtesten: list[Any] = []
 
     async def vraag_po(self, vraag: str, context: str = "") -> str:
         tekst = f"{vraag} {context}".lower()
@@ -57,3 +59,6 @@ class ScriptedPO:
 
     def toon_resultaten(self, lab: Any) -> None:
         self.resultaten.append(lab.overzicht())
+
+    def toon_eindtest(self, lab: Any) -> None:
+        self.eindtesten.append(lab.eind)

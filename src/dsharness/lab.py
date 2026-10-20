@@ -63,6 +63,8 @@ class Lab:
         self.resultaten: dict[str, Resultaat] = {}
         self.experimenten: dict[str, Experiment] = {}
         self.gekozen: str | None = None
+        self.eind = None  # EindResultaat na F6
+        self.eindmodel = None  # de pipeline, gefit op heel train
         y = data.zicht()[data.target]
         self.positief = positief if positief is not None else (str(y.value_counts().index[-1]) if taak == "classificatie" else None)
 
@@ -209,3 +211,64 @@ class Lab:
         if self.gekozen:
             regels.append(f"Gekozen: {self.gekozen}")
         return "\n".join(regels)
+
+
+# ---------- F6: eenmalige eindtest ----------
+class EindResultaat(BaseModel):
+    experiment: str
+    metriek: str
+    test: float
+    test_baseline: float | None
+    cv_gemiddelde: float
+    cv_sd: float
+    n_train: int
+    n_test: int
+    extra: dict[str, float]
+    binnen_verwachting: bool
+
+
+EXTRA = {"regressie": ("rmse", "mae", "r2"), "classificatie": ("accuracy", "balanced_accuracy", "f1", "recall", "roc_auc")}
+
+
+def _score(lab: Lab, metriek: str, model, X, y) -> float:
+    from sklearn.metrics import get_scorer
+    oud, lab.cv = lab.cv, lab.cv.model_copy(update={"metriek": metriek})
+    try:
+        s = lab._scorer()
+        waarde = (get_scorer(s) if isinstance(s, str) else s)(model, X, y)
+    finally:
+        lab.cv = oud
+    return float(-waarde if metriek in ("rmse", "mae") else waarde)
+
+
+def voer_eindtest(lab: Lab, experiment: str) -> EindResultaat:
+    """Fit op heel train, beoordeel één keer op de testset (uit de kluis). Daarna is de testset verbrand."""
+    if lab.gekozen != experiment:
+        raise LabFout(f"Alleen het gekozen model ('{lab.gekozen}') mag de eindtest doen.")
+    df = lab.train_df()
+    X, y = df[lab.plan.features(df)], df[lab.data.target]
+    model = lab.gekozen_pipeline().fit(X, y)
+    base_exp = next((e for e in lab.experimenten.values() if e.model == "baseline"), None)
+    baseline = lab.pipeline(base_exp, df).fit(X, y) if base_exp else None
+
+    def beoordeel(test: pd.DataFrame) -> dict:
+        test = test[test[lab.data.target].notna()]
+        Xt, yt = test[lab.plan.features(df)], test[lab.data.target]
+        uit = {"n": len(test), "test": _score(lab, lab.cv.metriek, model, Xt, yt),
+               "baseline": _score(lab, lab.cv.metriek, baseline, Xt, yt) if baseline is not None else None, "extra": {}}
+        for m in EXTRA[lab.taak]:
+            try:
+                uit["extra"][m] = round(_score(lab, m, model, Xt, yt), 4)
+            except (ValueError, AttributeError):  # bijv. roc_auc zonder beide klassen in test
+                pass
+        return uit
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        r = lab.data.eindtest(beoordeel)
+    cv = lab.resultaten[experiment]
+    lab.eindmodel = model
+    lab.eind = EindResultaat(experiment=experiment, metriek=lab.cv.metriek, test=r["test"], test_baseline=r["baseline"],
+                             cv_gemiddelde=cv.gemiddelde, cv_sd=cv.sd, n_train=len(df), n_test=r["n"], extra=r["extra"],
+                             binnen_verwachting=abs(r["test"] - cv.gemiddelde) <= 2 * cv.sd + 1e-9)
+    return lab.eind

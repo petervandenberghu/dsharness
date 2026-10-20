@@ -113,10 +113,17 @@ class KiesModel(BaseModel):
     experiment: str
 
 
+# ---------- F6: eenmalige eindtest ----------
+class Eindtest(BaseModel):
+    """Fit het gekozen experiment op heel train en beoordeel het één keer op de testset."""
+    type: Literal["eindtest"] = "eindtest"
+    experiment: str
+
+
 Actie = Annotated[
     Union[VerwijderDubbelen, OnmogelijkNaarNA, VerwijderZonderTarget, Split,
           VerwijderKolom, NAIndicator, Imputeer, Afkappen, LogTransformatie, OneHot, TargetEncoding, Schaal,
-          CVOpzet, Experiment, KiesModel],
+          CVOpzet, Experiment, KiesModel, Eindtest],
     Field(discriminator="type"),
 ]
 PrepActie = Annotated[
@@ -128,6 +135,7 @@ VASTE_REGELS = ("verwijder_dubbelen", "onmogelijk_naar_na", "verwijder_zonder_ta
 F1_TYPES = (*VASTE_REGELS, "split")
 F4_TYPES = ("verwijder_kolom", "na_indicator", "imputeer", "afkappen", "log", "onehot", "target_encoding", "schaal")
 F5_TYPES = ("cv_opzet", "experiment", "kies_model")
+F6_TYPES = ("eindtest",)
 
 
 def omschrijf(a: BaseModel) -> str:
@@ -163,4 +171,6 @@ def omschrijf(a: BaseModel) -> str:
             return f"Experiment '{n}': {m}" + (f" ({', '.join(extra)})" if extra else "")
         case KiesModel(experiment=e):
             return f"Model kiezen: '{e}'"
+        case Eindtest(experiment=e):
+            return f"Eindtest: '{e}' één keer op de testset"
     raise TypeError(a)

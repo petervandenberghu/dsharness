@@ -11,7 +11,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
-from .acties import (F4_TYPES, F5_TYPES, Afkappen, CVOpzet, Experiment, KiesModel, Imputeer, LogTransformatie, NAIndicator, OneHot, OnmogelijkNaarNA, Schaal, Split,
+from .acties import (F4_TYPES, F5_TYPES, F6_TYPES, Afkappen, CVOpzet, Eindtest, Experiment, KiesModel, Imputeer, LogTransformatie, NAIndicator, OneHot, OnmogelijkNaarNA, Schaal, Split,
                      TargetEncoding, VerwijderDubbelen, VerwijderKolom, VerwijderZonderTarget)
 from .bronnen import BronSleutel, bron, catalogus_tekst
 from .contracts import ReviewOordeel
@@ -114,6 +114,8 @@ def regels(c: ConceptVoorstel, ctx: ReviewContext) -> list[Uitkomst]:
         u += _f4_regels(a, ctx, df)
     if a.type in F5_TYPES:
         u += _f5_regels(a, ctx, df)
+    if a.type in F6_TYPES:
+        u += _f6_regels(a, ctx)
     return u or [Uitkomst("goed", "Geen bezwaren gevonden in de regels.")]
 
 
@@ -336,3 +338,15 @@ def _f5_regels(a, ctx: ReviewContext, df: pd.DataFrame) -> list[Uitkomst]:
                 u.append(Uitkomst("twijfel", f"Groot verschil tussen train ({r.train:.3f}) en validatie ({r.gemiddelde:.3f}): "
                                              "het model overfit waarschijnlijk. Overweeg meer regularisatie of een eenvoudiger model.", ("esl",)))
     return u
+
+
+def _f6_regels(a: Eindtest, ctx: ReviewContext) -> list[Uitkomst]:
+    lab = ctx.lab
+    if lab is None or lab.gekozen is None:
+        return [Uitkomst("fout", "Er is nog geen model gekozen in F5.")]
+    if a.experiment != lab.gekozen:
+        return [Uitkomst("fout", f"Alleen het gekozen model ('{lab.gekozen}') mag de eindtest doen.", ("cawley",))]
+    if ctx.data.test_gebruikt:
+        return [Uitkomst("fout", "De testset is al gebruikt. Een nieuwe eindtest vraagt een nieuwe, ongeziene testset.", ("geron",))]
+    return [Uitkomst("goed", "Het model is gekozen op cross-validatie binnen train; de testset is nog ongezien. "
+                             "Na deze stap mag je niets meer aan het model veranderen op basis van de testscore.", ("geron", "cawley"))]

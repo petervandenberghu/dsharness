@@ -237,6 +237,21 @@ class Cockpit:
           <p class="dsh-meta" style="margin:8px 0 0">Groot verschil tussen train en validatie wijst op overfitting.
           Een verschil kleiner dan de spreiding (±) is vooral ruis.</p></div>"""))
 
+    def toon_eindtest(self, lab) -> None:
+        e = html.escape
+        r = lab.eind
+        self.log.schrijf_rapport("F6", r)
+        kleur = "#2C7A57" if r.binnen_verwachting else "#A86300"
+        oordeel = ("binnen de verwachting van de cross-validatie" if r.binnen_verwachting else
+                   "buiten de verwachting van de cross-validatie (bij weinig testrijen kan dat toeval zijn)")
+        extra = ", ".join(f"{k} {v:.3f}" for k, v in r.extra.items())
+        base = f"<p style='margin:4px 0'>Baseline op test: {r.test_baseline:.3f}</p>" if r.test_baseline is not None else ""
+        self._voeg_toe(w.HTML(CSS + f"""<div class="dsh-kaart" style="--dsh-k:{kleur}">
+          <div class="dsh-meta">F6 · Eindtest · {r.n_test} testrijen, eenmalig · de testset is nu verbrand</div>
+          <h3>'{e(r.experiment)}': {e(r.metriek)} = {r.test:.3f} op test</h3>
+          <p style="margin:4px 0">Cross-validatie gaf {r.cv_gemiddelde:.3f} ± {r.cv_sd:.3f}: {oordeel}.</p>{base}
+          <p class="dsh-meta" style="margin:6px 0 0">Overige maten op test: {e(extra)}</p></div>"""))
+
     # ---------- async ----------
     async def vraag_akkoord(self, v: Voorstel, figuur: Any = None) -> Besluit:
         fut = asyncio.get_running_loop().create_future()

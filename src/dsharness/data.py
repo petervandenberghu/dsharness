@@ -41,6 +41,7 @@ class DataLaag:
         self._test_gebruikt = False
         self.split_actie: Split | None = None
         self.geschiedenis: list[str] = []  # uitgevoerde acties, met resultaat
+        self.acties: list = []  # de uitgevoerde acties zelf, om te kunnen reproduceren
 
     def __repr__(self) -> str:
         return f"DataLaag(target={self.target!r}, gesplitst={self.gesplitst}, n_train={self.n_train}, n_test={self.n_test})"
@@ -85,6 +86,7 @@ class DataLaag:
     # ---------- uitvoeren ----------
     def voer_uit(self, actie) -> str:
         resultaat = self._voer_uit(actie)
+        self.acties.append(actie)
         self.geschiedenis.append(f"{omschrijf(actie)}: {resultaat}")
         return resultaat
 
@@ -148,6 +150,10 @@ class DataLaag:
         return f"Gesplitst ({a.methode}): {self.n_train} rijen train, {self.n_test} rijen test. De testset staat in de kluis."
 
     # ---------- kluis ----------
+    @property
+    def test_gebruikt(self) -> bool:
+        return self._test_gebruikt
+
     def eindtest(self, fn: Callable[[pd.DataFrame], T]) -> T:
         """Geeft de testset één keer vrij, aan `fn`. Daarna is hij 'verbrand'."""
         if self._set is None:

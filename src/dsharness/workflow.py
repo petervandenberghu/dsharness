@@ -1,4 +1,4 @@
-"""Workflow F1 → F2 → SPLIT → F3 → F4 → F5. Gewone Python: de volgorde en de gates liggen vast, geen LLM beslist dat."""
+"""Workflow F1 → F2 → SPLIT → F3 → F4 → F5 → F6. Gewone Python: de volgorde en de gates liggen vast, geen LLM beslist dat."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,9 +6,9 @@ from typing import Callable
 
 from pydantic_ai import Agent
 
-from .acties import VASTE_REGELS, omschrijf
+from .acties import VASTE_REGELS, Eindtest, omschrijf
 from .data import DataLaag, KluisFout
-from .lab import Lab
+from .lab import Lab, voer_eindtest
 from .modeler import Modeler, ModelerDeps
 from .po import PO
 from .prep import PrepDeps, PrepEngineer
@@ -149,13 +149,45 @@ async def modelleer(po: PO, data: DataLaag, *, doel: str, taak: str, team: Team,
     return lab
 
 
+async def eindtest(po: PO, data: DataLaag, *, taak: str, team: Team, lab: Lab,
+                   po_vragen: list[tuple[str, str]] | None = None) -> Lab:
+    """F6: één voorstel, door de harness opgesteld. Na akkoord: fit op train, één keer beoordelen op test."""
+    if lab.gekozen is None:
+        raise ValueError("Er is nog geen model gekozen in F5.")
+    r = lab.resultaten[lab.gekozen]
+    c = ConceptVoorstel(
+        actie=Eindtest(experiment=lab.gekozen),
+        observatie=f"Gekozen in F5: '{lab.gekozen}' ({r.omschrijving.split(': ', 1)[-1]}), {r.metriek} {r.gemiddelde:.3f} ± {r.sd:.3f} "
+                   f"in cross-validatie. De testset ({data.n_test} rijen) is nog niet gebruikt.",
+        onderzocht=f"{len(lab.resultaten)} experimenten met cross-validatie op train ({lab.cv.methode}, {lab.cv.folds} folds).",
+        po_kennis="De PO koos dit model in F5.",
+        plan="Het model fitten op de hele trainset en één keer beoordelen op de testset, met de baseline ernaast.",
+        waarom="De testset geeft een eerlijke schatting van de prestatie op nieuwe data, maar alleen als je hem één keer gebruikt.",
+        bron_sleutels=["geron", "cawley"])
+    ctx = ReviewContext(data=data, taak=taak, po_vragen=_vragen(po_vragen), plan=lab.plan, lab=lab)
+    po.melding("Eindtest voorbereid (F6). Na jouw akkoord wordt de testset één keer gebruikt.")
+    await _behandel(po, c, "F6-001", "F6 Eindtest", ctx, None, team, herzie=None,
+                    uitvoer=lambda a: _eind_tekst(voer_eindtest(lab, a.experiment)))
+    if lab.eind is not None:
+        po.toon_eindtest(lab)
+    return lab
+
+
+def _eind_tekst(e) -> str:
+    richting = "" if e.binnen_verwachting else (" Dat is beter dan de cross-validatie voorspelde" if (
+        e.test > e.cv_gemiddelde) == (e.metriek not in ("rmse", "mae")) else " Dat is slechter dan de cross-validatie voorspelde")
+    base = f" (baseline {e.test_baseline:.3f})" if e.test_baseline is not None else ""
+    return (f"Eindtest '{e.experiment}': {e.metriek} op test = {e.test:.3f}{base}; cross-validatie gaf "
+            f"{e.cv_gemiddelde:.3f} ± {e.cv_sd:.3f}.{richting + '; bij ' + str(e.n_test) + ' testrijen kan dat toeval zijn.' if richting else ''}")
+
+
 async def _behandel(po: PO, c: ConceptVoorstel, id: str, fase: str, ctx: ReviewContext, deps, team: Team, *,
-                    herzie: Agent, uitvoer: Callable) -> str | None:
+                    herzie: Agent | None, uitvoer: Callable) -> str | None:
     """Review → (herzien) → PO → uitvoeren. Geeft de uitvoermelding, of None als er niets is uitgevoerd."""
     reviewer_revisies = po_rondes = 0
     while True:
         review = await team.reviewer.beoordeel(c, ctx)
-        if review.oordeel == "fout" and reviewer_revisies < team.max_reviewer_revisies:
+        if review.oordeel == "fout" and herzie is not None and reviewer_revisies < team.max_reviewer_revisies:
             reviewer_revisies += 1
             po.melding(f"Reviewer vindt voorstel {id} fout; de specialist herziet het.")
             c = await _herzie(herzie, deps, c, "de Reviewer", review.toelichting)
@@ -173,6 +205,9 @@ async def _behandel(po: PO, c: ConceptVoorstel, id: str, fase: str, ctx: ReviewC
             po.melding(f"Voorstel {id} afgewezen: {omschrijf(c.actie)}.")
             return None
         po_rondes += 1  # aanpassen
+        if herzie is None:
+            po.melding(f"Voorstel {id} kan niet worden aangepast; kies akkoord of afwijzen.")
+            continue
         if po_rondes >= team.max_po_rondes:
             po.melding(f"Voorstel {id}: na {po_rondes} aanpassingen gestopt. Niet uitgevoerd.")
             return None

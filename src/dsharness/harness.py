@@ -14,12 +14,13 @@ from .prep_plan import PrepPlan
 from .reviewer import Reviewer
 from .scout import maak_scout
 from .verkenner import F3Rapport, maak_verkenner
-from .workflow import Team, Uitkomst, eerste_blik_tot_split, modelleer, prepareer, verken_train
+from .workflow import Team, Uitkomst, eerste_blik_tot_split, eindtest, modelleer, prepareer, verken_train
 
 
 class Harness:
     def __init__(self, project_yaml: str | Path = "project.yaml"):
         self.config, basis = laad(project_yaml)
+        self.basis = basis
         self.data = DataLaag(self.config.laad_data(basis), target=self.config.target)
         self._po: PO | None = None
         self.po_vragen: list[tuple[str, str]] = []  # gedeeld over de fases
@@ -59,8 +60,24 @@ class Harness:
         self.lab = await modelleer(po, self.data, plan=self.plan, positief=self.config.positief, lab=self.lab, **self._kw())
         return self.lab
 
+    async def eindtest(self, po: PO) -> Lab:
+        self._po = po
+        return await eindtest(po, self.data, taak=self.config.taak, team=self.team, lab=self.lab, po_vragen=self.po_vragen)
+
+    def resultaat(self, po: PO, map: str | Path = "resultaat") -> dict[str, Path]:
+        """F7: verslag, model card, uitgevoerd resultaat-notebook (HTML) en model.joblib."""
+        from .resultaat import maak_resultaat
+        from .verslag import maak_verslag
+        besluiten = po.log.lees() if hasattr(po, "log") else list(getattr(po, "voorstellen", []))
+        v = maak_verslag(self.config, self.basis, self.data, besluiten=besluiten, po_vragen=self.po_vragen,
+                         f1=self.f1.rapport if self.f1 else None, f3=self.f3, plan=self.plan, lab=self.lab)
+        po.melding("Resultaat-notebook wordt gemaakt en uitgevoerd (F7)…")
+        paden = maak_resultaat(v, self.basis / map)
+        po.melding("F7 klaar: " + ", ".join(str(p.relative_to(self.basis)) for p in paden.values()))
+        return paden
+
     async def run(self, po: PO) -> None:
-        """F1 → F2 → split → F3 → F4 → F5. Slaat fases over die al gedaan zijn; stopt als een fase niet afkomt."""
+        """F1 → F2 → split → F3 → F4 → F5 → F6 → F7. Slaat fases over die al gedaan zijn; stopt als een fase niet afkomt."""
         if not self.data.gesplitst:
             await self.eerste_blik(po)
         if not self.data.gesplitst:
@@ -73,5 +90,9 @@ class Harness:
             return
         if self.lab is None or not self.lab.gekozen:
             await self.modelleer(po)
-        if self.lab.gekozen:
-            po.melding(f"F5 klaar: '{self.lab.gekozen}' gekozen. Volgende fase: F6 (eenmalige eindtest).")
+        if not self.lab.gekozen:
+            return
+        if self.lab.eind is None:
+            await self.eindtest(po)
+        if self.lab.eind is not None:
+            self.resultaat(po)
