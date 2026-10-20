@@ -37,7 +37,7 @@ def _stap(messages, info: AgentInfo, herzien: dict) -> ModelResponse:
         return ModelResponse(parts=[
             ToolCallPart("vorm", {}), ToolCallPart("dubbelen", {}), ToolCallPart("beschrijf", {}),
             ToolCallPart("tel_waarden", {"kolom": "patient_id"}),
-            ToolCallPart("vraag_po", {"vraag": "Kan glucose 0 zijn?", "context": "5 rijen met 0"}),
+            ToolCallPart("vraag_po", {"vragen": [{"kolom": "glucose", "vraag": "Kan glucose 0 zijn?", "context": "5 rijen met 0"}]}),
         ])
     bevindingen = [{"soort": "structuur_groep", "kolom": "patient_id", "beschrijving": "3 bezoeken per patiënt", "bewijs": "tel_waarden"},
                    {"soort": "onmogelijke_waarde", "kolom": "glucose", "beschrijving": "5 keer 0", "bewijs": "beschrijf"}]

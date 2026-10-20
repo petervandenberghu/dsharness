@@ -10,7 +10,7 @@ from .data import DataLaag
 from .modellen import maak_model
 from .rapport import ConceptVoorstel, Verkenningsrapport
 from .reviewer import ReviewContext, groep_kandidaten, tijd_kandidaten
-from .tools import AgentDeps, basis_tools
+from .tools import PO_REGELS, AgentDeps, basis_tools
 
 ScoutDeps = AgentDeps
 
@@ -72,9 +72,9 @@ class Scout:
 
 def maak_scout(model=None) -> Scout:
     m, ts = maak_model(model), basis_tools()
-    verken = Agent(m, deps_type=AgentDeps, output_type=Verkenningsrapport, instructions=[INSTRUCTIES, opdracht],
+    verken = Agent(m, deps_type=AgentDeps, output_type=Verkenningsrapport, instructions=[INSTRUCTIES, PO_REGELS, opdracht],
                    toolsets=[ts], name="data_scout", retries=3)
-    herzie = Agent(m, deps_type=AgentDeps, output_type=ConceptVoorstel, instructions=[INSTRUCTIES, opdracht],
+    herzie = Agent(m, deps_type=AgentDeps, output_type=ConceptVoorstel, instructions=[INSTRUCTIES, PO_REGELS, opdracht],
                    toolsets=[ts], name="data_scout_herzien", retries=3)
 
     @verken.output_validator

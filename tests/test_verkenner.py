@@ -12,7 +12,7 @@ from dsharness.po import ScriptedPO
 from dsharness.reviewer import Reviewer
 from dsharness.scout import maak_scout
 from dsharness.tools import AgentDeps, train_tools
-from dsharness.verkenner import F3Rapport, KolomProfiel, controle, maak_verkenner
+from dsharness.verkenner import F3Rapport, KolomProfiel, controle, kolommen_met_uitschieters, maak_verkenner
 from dsharness.workflow import Team, verken_train
 
 
@@ -36,6 +36,15 @@ def profielen(d: DataLaag, mechanisme: dict[str, str]) -> list[dict]:
     return uit
 
 
+def alle_vragen(d: DataLaag) -> list[dict]:
+    """Per NA-kolom 'waarom ontbreekt het' en per kolom met uitschieters 'fout of echt', als losse deelvragen."""
+    df = d.zicht()
+    vragen = [{"kolom": k, "vraag": f"Waarom ontbreken waarden in {k}?"} for k in df.columns if df[k].isna().any()]
+    vragen += [{"kolom": k, "vraag": f"Zijn de uitschieters in {k} fouten of echte waarden?", "context": str(w)}
+               for k, w in kolommen_met_uitschieters(df, d.target).items()]
+    return vragen
+
+
 def script(d: DataLaag, mechanisme: dict[str, str]):
     na_kolommen = [k for k in d.zicht().columns if d.zicht()[k].isna().any()]
 
@@ -44,8 +53,8 @@ def script(d: DataLaag, mechanisme: dict[str, str]):
         uit = info.output_tools[0].name
         if not any(isinstance(p, ToolReturnPart) for p in delen):
             calls = [ToolCallPart("na_telling", {}), ToolCallPart("correlatie", {})]
-            for k in na_kolommen:
-                calls += [ToolCallPart("na_patroon", {"kolom": k}), ToolCallPart("vraag_po", {"vraag": f"Waarom ontbreekt {k}?"})]
+            calls += [ToolCallPart("na_patroon", {"kolom": k}) for k in na_kolommen]
+            calls.append(ToolCallPart("vraag_po", {"vragen": alle_vragen(d)}))  # gebundeld: één kaart, losse antwoorden
             return ModelResponse(parts=calls)
         p = profielen(d, mechanisme)
         if not any(isinstance(x, RetryPromptPart) for x in delen):
@@ -63,6 +72,7 @@ def test_verkenner_vult_aan_en_verandert_niets():
     assert {p.kolom for p in r.profielen} == set(voor.columns) - {o.target}
     assert {p.kolom: p.na_mechanisme for p in r.profielen if p.na_aantal} == o.na_mechanismen
     assert any("hoog inkomen" in a for _, a in po.vragen)
+    assert po.kaarten == 1 and len(po.vragen) == len(alle_vragen(d)) == 2  # gebundeld, maar elk een eigen antwoord
     assert d.zicht().equals(voor) and po.rapporten == [r]
 
 
@@ -104,7 +114,37 @@ def test_controle_eist_onderzoek_en_po():
     for k in ("kamers", "bouwjaar", "oppervlakte"):
         d.noteer("na_patroon", k)
         deps.po_vragen.append((f"Waarom ontbreekt {k}?", "weet ik niet"))
+    uitschieters = kolommen_met_uitschieters(d.zicht(), o.target)
+    assert uitschieters  # huizen heeft in train uitschieters
+    mist = controle(_rapport(d), d, deps)
+    assert len(mist) == len(uitschieters) and all("fouten of echte waarden" in m for m in mist)
+    deps.po_vragen.extend((f"Zijn de uitschieters in {k} fouten of echte waarden?", "echt") for k in uitschieters)
     assert controle(_rapport(d), d, deps) == []
+
+
+def test_vraag_po_tool_weigert_datavragen_en_bundelt_los():
+    o, d = na_f1(huizen)
+    d_ = AgentDeps(data=d, po=ScriptedPO(o.po_kennis), doel="", taak=o.taak)
+    slecht = [{"vraag": "Is de verdeling van prijs_k sterk rechtsscheef?"},
+              {"kolom": "kamers", "vraag": "Waarom ontbreekt kamers? En is dat erg?"},
+              {"kolom": "zwembad", "vraag": "Wat betekent zwembad?"}]
+    goed = [{"kolom": "kamers", "vraag": "Waarom ontbreken waarden?"},
+            {"kolom": "oppervlakte", "vraag": "Is 410 m² een fout of een echte waarde?"}]
+
+    def f(messages, info):
+        retries = [p for m in messages for p in m.parts if isinstance(p, RetryPromptPart)]
+        antwoorden = [p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)]
+        if antwoorden:
+            return ModelResponse(parts=[TextPart(str(retries[0].content) + " || " + str(antwoorden[0].content))])
+        return ModelResponse(parts=[ToolCallPart("vraag_po", {"vragen": goed if retries else slecht})])
+
+    from dsharness.tools import basis_tools
+    uit = Agent(FunctionModel(f), deps_type=AgentDeps, toolsets=[basis_tools()]).run_sync("x", deps=d_).output
+    terug, antwoorden = uit.split(" || ")
+    assert "zelf in de data" in terug and "meerdere vragen" in terug and "'zwembad' bestaat niet" in terug
+    assert d_.po.kaarten == 1 and len(d_.po_vragen) == 2
+    assert d_.po_vragen[0][0] == "[kamers] Waarom ontbreken waarden?" and "vergeten" in d_.po_vragen[0][1]
+    assert d_.po_gevraagd_over("oppervlakte", "fout") and not d_.po_gevraagd_over("kamers", "fout")
 
 
 def test_controle_vangt_verkeerde_getallen():

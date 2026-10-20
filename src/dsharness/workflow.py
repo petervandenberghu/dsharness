@@ -17,7 +17,7 @@ from .rapport import ConceptVoorstel, Verkenningsrapport
 from .reviewer import ReviewContext, Reviewer
 from .scout import Scout, ScoutDeps
 from .tools import AgentDeps
-from .verkenner import F3Rapport
+from .verkenner import F3Rapport, kolommen_met_uitschieters
 
 
 @dataclass
@@ -74,7 +74,8 @@ async def verken_train(po: PO, data: DataLaag, *, doel: str, taak: str, team: Te
     if team.verkenner is None:
         raise ValueError("Geen Verkenner in het team.")
     deps = AgentDeps(data=data, po=po, doel=doel, taak=taak, po_vragen=_vragen(po_vragen))
-    deps.max_vragen = len(deps.po_vragen) + int(data.zicht().isna().any().sum()) + 3
+    df = data.zicht()
+    deps.max_vragen = len(deps.po_vragen) + int(df.isna().any().sum()) + len(kolommen_met_uitschieters(df, data.target)) + 3
     po.melding("Verkenner onderzoekt de trainset (F3)…")
     rapport = (await team.verkenner.run("Verken de trainset en lever je F3-rapport.", deps=deps)).output
     po.toon_rapport(rapport)

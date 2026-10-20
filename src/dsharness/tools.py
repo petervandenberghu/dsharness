@@ -4,8 +4,10 @@ Elke tool leest via DataLaag.zicht() en wordt genoteerd in data.log, zodat de ha
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel, Field
 from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.toolsets import FunctionToolset
 
@@ -23,8 +25,50 @@ class AgentDeps:
     po_vragen: list[tuple[str, str]] = field(default_factory=list)
     max_vragen: int = 6
 
-    def po_gevraagd_over(self, kolom: str) -> bool:
-        return any(kolom.lower() in (v + " " + a).lower() for v, a in self.po_vragen)
+    def po_gevraagd_over(self, kolom: str, *woorden: str) -> bool:
+        """Is de PO gevraagd over deze kolom (en, als gegeven, over een van deze onderwerpen)?"""
+        for v, _ in self.po_vragen:
+            v = v.lower()
+            if kolom.lower() in v and (not woorden or any(w in v for w in woorden)):
+                return True
+        return False
+
+
+PO_REGELS = """Vragen aan de PO (tool vraag_po):
+- Vraag alleen wat je níet uit de data kunt halen: de betekenis van een kolom of waarde, de herkomst, waarom iets
+  ontbreekt, of een opvallende of extreme waarde een fout of echt is, en wat zakelijk belangrijk is.
+- Statistische eigenschappen (verdeling, scheefheid, correlatie, aantallen) bepaal je zelf met je tools; vraag die niet.
+- Elke deelvraag bevat één vraag (één vraagteken). Meerdere vragen tegelijk mag, als lijst: de PO beantwoordt ze los.
+- Vul per deelvraag de kolom in en geef als context de getallen die je zag."""
+
+# Vragen die over de data zelf gaan en die de onderzoeker dus zelf moet beantwoorden.
+DATAVRAAG = re.compile(r"scheef|verdeling|verdeeld|correlatie|correleert|standaardafwijking|histogram|kwartiel|mediaan"
+                       r"|hoeveel (rijen|waarden|na)|normaal ?verdeel", re.IGNORECASE)
+
+
+class Deelvraag(BaseModel):
+    kolom: str | None = Field(None, description="De kolom waar de vraag over gaat; leeg bij een algemene vraag")
+    vraag: str = Field(description="Eén vraag, met één vraagteken")
+    context: str = Field("", description="De getallen die je zag, zodat de PO weet waar het over gaat")
+
+    def tekst(self) -> str:
+        if self.kolom and self.kolom.lower() not in self.vraag.lower():
+            return f"[{self.kolom}] {self.vraag}"
+        return self.vraag
+
+
+def controleer_vragen(vragen: list[Deelvraag], kolommen: list[str]) -> list[str]:
+    fouten = []
+    if not vragen:
+        fouten.append("stel minstens één vraag")
+    for i, q in enumerate(vragen, 1):
+        if q.vraag.count("?") > 1:
+            fouten.append(f"deelvraag {i} bevat meerdere vragen; maak er losse deelvragen van, zodat de PO ze apart kan beantwoorden")
+        if DATAVRAAG.search(q.vraag):
+            fouten.append(f"deelvraag {i} ('{q.vraag[:70]}') gaat over iets wat je zelf in de data kunt zien; gebruik je tools")
+        if q.kolom and q.kolom not in kolommen:
+            fouten.append(f"deelvraag {i}: kolom '{q.kolom}' bestaat niet (kies uit {kolommen})")
+    return fouten
 
 
 def _zicht(ctx: RunContext[AgentDeps], tool: str, kolom: str | None = None, *, alleen_train: bool = False):
@@ -78,14 +122,22 @@ def basis_tools() -> FunctionToolset[AgentDeps]:
         return vk.tijdsverloop(_zicht(ctx, "tijdsverloop", tijd_kolom), tijd_kolom, ctx.deps.data.target)
 
     @ts.tool
-    async def vraag_po(ctx: RunContext[AgentDeps], vraag: str, context: str = "") -> str:
-        """Stel de PO een vraag over de business of de data. Noem de kolomnaam. `context`: de getallen die je zag."""
+    async def vraag_po(ctx: RunContext[AgentDeps], vragen: list[Deelvraag]) -> list[str]:
+        """Stel de PO één of meer vragen over betekenis, herkomst of belang. Elke deelvraag krijgt een eigen antwoord.
+        Niet voor wat je zelf in de data kunt zien (verdeling, scheefheid, correlatie): gebruik daarvoor je tools."""
         d = ctx.deps
-        if len(d.po_vragen) >= d.max_vragen:
-            return "Je hebt het maximum aantal vragen bereikt. Werk verder met wat je weet en meld wat onbekend is."
-        antwoord = await d.po.vraag_po(vraag, context)
-        d.po_vragen.append((vraag, antwoord))
-        return antwoord
+        if fouten := controleer_vragen(vragen, list(d.data.zicht().columns)):
+            raise ModelRetry("Pas je vragen aan: " + "; ".join(fouten) + ".")
+        ruimte = d.max_vragen - len(d.po_vragen)
+        if ruimte <= 0:
+            return ["Je hebt het maximum aantal vragen bereikt. Werk verder met wat je weet en meld wat onbekend is."]
+        teksten = [q.tekst() for q in vragen[:ruimte]]
+        antwoorden = await d.po.vraag_po_meerdere([(t, q.context) for t, q in zip(teksten, vragen)])
+        d.po_vragen.extend(zip(teksten, antwoorden))
+        uit = [f"{t} → {a}" for t, a in zip(teksten, antwoorden)]
+        if len(vragen) > ruimte:
+            uit.append(f"{len(vragen) - ruimte} vraag/vragen niet gesteld: maximum bereikt.")
+        return uit
 
     return ts
 

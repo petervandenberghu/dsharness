@@ -13,7 +13,8 @@ from pydantic_ai import Agent, ModelRetry, RunContext
 
 from .data import DataLaag
 from .modellen import maak_model
-from .tools import AgentDeps, basis_tools, train_tools
+from . import verkennen as vk
+from .tools import PO_REGELS, AgentDeps, basis_tools, train_tools
 
 NAMechanisme = Literal["geen_na", "MCAR", "MAR", "MNAR", "onbekend"]
 
@@ -50,12 +51,29 @@ Werkwijze:
    - MNAR: het ontbreken hangt samen met de ontbrekende waarde zelf. Dat kun je niet uit de data bewijzen; alleen de PO
      kan het bevestigen. Gaat de PO-kennis tegen het datapatroon in, volg dan de PO en leg uit waarom.
    - onbekend: als data en PO samen geen conclusie toelaten.
-3. Bij uitschieters: vraag de PO of het fouten of echte waarden zijn, als je dat niet uit de data kunt halen.
+3. Voor elke kolom met uitschieters (tool uitschieters, IQR-regel): vraag de PO wat die waarden betekenen. Zijn het
+   fouten of echte waarden? Noem de kolom en de waarden. Of een kolom scheef is, zie je zelf; dat vraag je niet.
 4. Je verandert niets aan de data en stelt nog geen acties voor. Je levert kennis voor de volgende fase.
 
 Lever een F3-rapport: per kolom (behalve de target) een profiel, een korte beschrijving van de target, en concrete
 aandachtspunten voor de preparatie (bijv. 'bouwjaar: MAR, 16% NA → imputatie die andere kolommen gebruikt').
-Schrijf kort en in eenvoudig Nederlands. Gebruik getallen."""
+Schrijf kort en in eenvoudig Nederlands. Gebruik getallen.
+
+""" + PO_REGELS
+
+UITSCHIETER_WOORDEN = ("uitschiet", "extreem", "echt", "fout", "afwijk", "opvallend", "betekenis", "betekent")
+
+
+def kolommen_met_uitschieters(df: pd.DataFrame, target: str) -> dict[str, list]:
+    """Numerieke kolommen (ook de target) met waarden buiten de IQR-grenzen in train. 0/1-kolommen tellen niet mee."""
+    uit = {}
+    for k in df.columns:
+        s = df[k]
+        if pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s) and s.nunique() > 2:
+            u = vk.uitschieters(df, k)
+            if u.get("aantal"):
+                uit[k] = u["waarden"]
+    return uit
 
 
 def opdracht(ctx: RunContext[AgentDeps]) -> str:
@@ -96,6 +114,9 @@ def controle(r: F3Rapport, data: DataLaag, deps: AgentDeps) -> list[str]:
             mist.append(f"'{k}': draai eerst na_patroon")
         if not deps.po_gevraagd_over(k):
             mist.append(f"'{k}': vraag de PO waarom waarden ontbreken (noem de kolomnaam)")
+    for k, waarden in kolommen_met_uitschieters(df, data.target).items():
+        if not deps.po_gevraagd_over(k, *UITSCHIETER_WOORDEN):
+            mist.append(f"'{k}' heeft uitschieters ({', '.join(map(str, waarden[:5]))}): vraag de PO of dit fouten of echte waarden zijn")
     return mist
 
 

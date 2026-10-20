@@ -11,7 +11,7 @@ from .bronnen import catalogus_tekst
 from .modellen import maak_model
 from .prep_plan import PrepPlan, PrepPlanFout
 from .rapport import ConceptVoorstel
-from .tools import AgentDeps, basis_tools, train_tools
+from .tools import PO_REGELS, AgentDeps, basis_tools, train_tools
 
 
 @dataclass
@@ -83,9 +83,9 @@ class PrepEngineer:
 
 def maak_prep(model=None) -> PrepEngineer:
     m, tools = maak_model(model), [basis_tools(), train_tools()]
-    voorstel = Agent(m, deps_type=PrepDeps, output_type=PrepVoorstellen, instructions=[INSTRUCTIES, opdracht],
+    voorstel = Agent(m, deps_type=PrepDeps, output_type=PrepVoorstellen, instructions=[INSTRUCTIES, PO_REGELS, opdracht],
                      toolsets=tools, name="prep_engineer", retries=4)
-    herzie = Agent(m, deps_type=PrepDeps, output_type=ConceptVoorstel, instructions=[INSTRUCTIES, opdracht],
+    herzie = Agent(m, deps_type=PrepDeps, output_type=ConceptVoorstel, instructions=[INSTRUCTIES, PO_REGELS, opdracht],
                    toolsets=tools, name="prep_engineer_herzien", retries=3)
 
     @voorstel.output_validator

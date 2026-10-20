@@ -11,7 +11,7 @@ from .bronnen import catalogus_tekst
 from .lab import CATALOGUS, Lab
 from .modellen import maak_model
 from .rapport import ConceptVoorstel
-from .tools import AgentDeps, basis_tools, train_tools
+from .tools import PO_REGELS, AgentDeps, basis_tools, train_tools
 
 
 @dataclass
@@ -101,9 +101,9 @@ class Modeler:
 
 def maak_modeler(model=None) -> Modeler:
     m, tools = maak_model(model), [basis_tools(), train_tools()]
-    voorstel = Agent(m, deps_type=ModelerDeps, output_type=ModelerVoorstellen, instructions=[INSTRUCTIES, opdracht],
+    voorstel = Agent(m, deps_type=ModelerDeps, output_type=ModelerVoorstellen, instructions=[INSTRUCTIES, PO_REGELS, opdracht],
                      toolsets=tools, name="modeler", retries=4)
-    herzie = Agent(m, deps_type=ModelerDeps, output_type=ConceptVoorstel, instructions=[INSTRUCTIES, opdracht],
+    herzie = Agent(m, deps_type=ModelerDeps, output_type=ConceptVoorstel, instructions=[INSTRUCTIES, PO_REGELS, opdracht],
                    toolsets=tools, name="modeler_herzien", retries=3)
 
     @voorstel.output_validator

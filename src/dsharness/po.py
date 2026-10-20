@@ -8,6 +8,7 @@ from .contracts import Besluit, Voorstel
 
 class PO(Protocol):
     async def vraag_po(self, vraag: str, context: str = "") -> str: ...
+    async def vraag_po_meerdere(self, vragen: list[tuple[str, str]]) -> list[str]: ...
     async def vraag_akkoord(self, v: Voorstel, figuur: Any = None) -> Besluit: ...
     def melding(self, tekst: str) -> None: ...
     def toon_rapport(self, rapport: Any) -> None: ...
@@ -29,6 +30,7 @@ class ScriptedPO:
         self.kennis = kennis or {}
         self.besluit = besluit
         self.vragen: list[tuple[str, str]] = []
+        self.kaarten = 0  # aantal vraagkaarten; één kaart kan meerdere deelvragen hebben
         self.voorstellen: list[tuple[Voorstel, Besluit]] = []
         self.meldingen: list[str] = []
         self.rapporten: list[Any] = []
@@ -42,6 +44,10 @@ class ScriptedPO:
         antwoord = " ".join(dict.fromkeys(hits)) or "Dat weet ik niet."
         self.vragen.append((vraag, antwoord))
         return antwoord
+
+    async def vraag_po_meerdere(self, vragen: list[tuple[str, str]]) -> list[str]:
+        self.kaarten += 1
+        return [await self.vraag_po(v, c) for v, c in vragen]
 
     async def vraag_akkoord(self, v: Voorstel, figuur: Any = None) -> Besluit:
         b = self.besluit(v)

@@ -128,7 +128,7 @@ def modeler_script():
         if "Ronde 2" in prompt:
             return ModelResponse(parts=[ToolCallPart(uit, {"voorstellen": [stap({"type": "kies_model", "experiment": "lin"})]})])
         if not any(isinstance(p, ToolReturnPart) for p in delen):
-            return ModelResponse(parts=[ToolCallPart("vraag_po", {"vraag": "Welke maat is belangrijk: gemiste opzeggers of valse alarmen?"})])
+            return ModelResponse(parts=[ToolCallPart("vraag_po", {"vragen": [{"vraag": "Welke maat is belangrijk: gemiste opzeggers of valse alarmen?"}]})])
         exp = [stap({"type": "experiment", "naam": "lin", "model": "lineair", "parameters": {"C": 0.1}, "gebalanceerd": True}),
                stap({"type": "experiment", "naam": "b", "model": "baseline"})]
         if any(isinstance(p, RetryPromptPart) for p in delen):

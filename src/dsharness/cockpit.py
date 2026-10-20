@@ -135,32 +135,44 @@ class _Kaart:
         self.klaar(besluit)
 
 
-class _Vraag:
-    """Open vraag aan de PO over business of data."""
+class _Vragen:
+    """Eén of meer vragen aan de PO, elk met een eigen antwoordveld en samen één knop."""
 
-    def __init__(self, vraag: str, context: str, klaar: Callable[[str], None]):
+    def __init__(self, vragen: list[tuple[str, str]], klaar: Callable[[list[str]], None]):
         self.klaar = klaar
         self.verstuurd = False
-        kop = w.HTML(CSS + f"""<div class="dsh-kaart" style="--dsh-k:#23395B">
-          <div class="dsh-meta">Vraag aan de PO</div><h3>{html.escape(vraag)}</h3>
-          {'<div>' + html.escape(context) + '</div>' if context else ''}</div>""")
-        self.antwoord = w.Textarea(placeholder="Antwoord (of: weet ik niet)", layout=w.Layout(width="560px", height="70px"))
+        e = html.escape
+        meer = len(vragen) > 1
+        delen: list[w.Widget] = [w.HTML(CSS + f"""<div class="dsh-kaart" style="--dsh-k:#23395B">
+          <div class="dsh-meta">{'Vragen' if meer else 'Vraag'} aan de PO{f' · {len(vragen)} deelvragen, elk een eigen antwoord' if meer else ''}</div>
+          {'' if meer else f'<h3>{e(vragen[0][0])}</h3>' + (f'<div>{e(vragen[0][1])}</div>' if vragen[0][1] else '')}</div>""")]
+        self.antwoorden = []
+        for i, (vraag, context) in enumerate(vragen, 1):
+            if meer:
+                delen.append(w.HTML(f"<div style='margin:8px 0 2px'><b>{i}. {e(vraag)}</b>"
+                                    + (f"<div class='dsh-meta'>{e(context)}</div>" if context else "") + "</div>"))
+            veld = w.Textarea(placeholder="Antwoord (of: weet ik niet)", layout=w.Layout(width="560px", height="60px"))
+            self.antwoorden.append(veld)
+            delen.append(veld)
         self.knop = w.Button(description="Versturen", button_style="primary")
         self.status = w.HTML()
         self.knop.on_click(lambda _b: self._verstuur())
-        self.widget = w.VBox([kop, self.antwoord, self.knop, self.status], layout=w.Layout(margin="0 0 16px"))
+        self.widget = w.VBox([*delen, self.knop, self.status], layout=w.Layout(margin="0 0 16px"))
 
     def _verstuur(self) -> None:
         if self.verstuurd:
             return
-        tekst = self.antwoord.value.strip()
-        if not tekst:
-            self.status.value = '<span style="color:#B42318">Geef een antwoord, of schrijf "weet ik niet".</span>'
+        teksten = [a.value.strip() for a in self.antwoorden]
+        if leeg := [str(i) for i, t in enumerate(teksten, 1) if not t]:
+            self.status.value = (f'<span style="color:#B42318">Beantwoord ook vraag {", ".join(leeg)}, of schrijf "weet ik niet".</span>'
+                                 if len(teksten) > 1 else '<span style="color:#B42318">Geef een antwoord, of schrijf "weet ik niet".</span>')
             return
         self.verstuurd = True
-        self.antwoord.disabled = self.knop.disabled = True
+        for a in self.antwoorden:
+            a.disabled = True
+        self.knop.disabled = True
         self.status.value = "<b>Verstuurd.</b>"
-        self.klaar(tekst)
+        self.klaar(teksten)
 
 
 class _PlanSamenvatting:
@@ -260,14 +272,18 @@ class Cockpit:
         return await fut
 
     async def vraag_po(self, vraag: str, context: str = "") -> str:
+        return (await self.vraag_po_meerdere([(vraag, context)]))[0]
+
+    async def vraag_po_meerdere(self, vragen: list[tuple[str, str]]) -> list[str]:
         fut = asyncio.get_running_loop().create_future()
 
-        def klaar(antwoord: str) -> None:
-            self.log.schrijf_vraag(vraag, antwoord)
+        def klaar(antwoorden: list[str]) -> None:
+            for (vraag, _), antwoord in zip(vragen, antwoorden):
+                self.log.schrijf_vraag(vraag, antwoord)
             if not fut.done():
-                fut.set_result(antwoord)
+                fut.set_result(antwoorden)
 
-        self._voeg_toe(_Vraag(vraag, context, klaar).widget)
+        self._voeg_toe(_Vragen(vragen, klaar).widget)
         return await fut
 
     def toon_rapport(self, rapport) -> None:

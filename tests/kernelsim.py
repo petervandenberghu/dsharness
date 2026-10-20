@@ -82,6 +82,7 @@ class KernelSim:
         self.leeg()
         self._comm(self.wacht_op_knop(naam), {"method": "custom", "content": {"event": "click"}})
 
-    def typ(self, tekst: str) -> None:
+    def typ(self, tekst: str, van_achter: int = 1) -> None:
+        """Typ in het laatste tekstveld (of het n-de van achteren)."""
         self.leeg()
-        self._comm(self.textareas[-1], {"method": "update", "state": {"value": tekst}, "buffer_paths": []})
+        self._comm(self.textareas[-van_achter], {"method": "update", "state": {"value": tekst}, "buffer_paths": []})

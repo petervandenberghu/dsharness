@@ -58,6 +58,18 @@ def test_vraag_po(k):
     assert uitkomst(k, "print(taak.result())") == "Weet ik niet"
 
 
+def test_meerdere_deelvragen_elk_een_antwoord(k):
+    assert k.voer_uit("taak = c.start(c.vraag_po_meerdere([('Waarom ontbreekt kamers?', '2 NA'), "
+                      "('Is 410 m2 een fout of echt?', 'oppervlakte')]))")
+    k.wacht_op_knop("Versturen")
+    k.typ("Vergeten", van_achter=2)
+    k.klik("Versturen")  # tweede antwoord nog leeg: geweigerd
+    assert uitkomst(k, "print(taak.done())") == "False"
+    k.typ("Echt, een villa")
+    k.klik("Versturen")
+    assert uitkomst(k, "print(taak.result(), len(log.lees_vragen()))") == "['Vergeten', 'Echt, een villa'] 2"
+
+
 def test_tweede_klik_na_besluit_wordt_genegeerd(k):
     assert k.voer_uit("taak = c.start(c.vraag_akkoord(voorbeeld_voorstel('goed')))")
     k.klik("Akkoord")
