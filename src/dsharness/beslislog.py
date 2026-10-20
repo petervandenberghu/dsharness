@@ -9,10 +9,15 @@ from .contracts import Besluit, Voorstel
 
 
 class Beslislog:
-    def __init__(self, pad: str | Path = "beslislog.jsonl"):
+    """Zonder pad krijgt elke run een eigen bestand: logs/beslislog_<datum>_<tijd>.jsonl. Oude runs blijven bewaard."""
+
+    def __init__(self, pad: str | Path | None = None, *, map: str | Path = "logs"):
+        if pad is None:
+            pad = Path(map) / f"beslislog_{datetime.now():%Y-%m-%d_%H%M%S}.jsonl"
         self.pad = Path(pad)
 
     def _schrijf(self, regel: dict) -> None:
+        self.pad.parent.mkdir(parents=True, exist_ok=True)
         with self.pad.open("a", encoding="utf-8") as f:
             f.write(json.dumps(regel, ensure_ascii=False) + "\n")
 

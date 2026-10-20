@@ -40,3 +40,13 @@ def test_beslislog_heen_en_terug(tmp_path):
     log.schrijf(v, b)
     [(v2, b2)] = log.lees()
     assert v2 == v and b2.keuze == "overrulen" and b2.motivatie == b.motivatie
+
+
+def test_beslislog_per_run(tmp_path):
+    import time
+    a = Beslislog(map=tmp_path)
+    time.sleep(1.1)
+    b = Beslislog(map=tmp_path)
+    assert a.pad != b.pad and a.pad.parent == tmp_path and a.pad.name.startswith("beslislog_")
+    a.schrijf_vraag("v", "a")
+    assert a.lees_vragen() == [("v", "a")] and b.lees_vragen() == []
