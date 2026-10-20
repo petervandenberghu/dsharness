@@ -50,7 +50,8 @@ def test_resultaat_notebook(tmp_path):
     fouten = [o for c in nb.cells if c.cell_type == "code" for o in c.get("outputs", []) if o.output_type == "error"]
     assert not fouten
     assert "Reproductie klopt" in "".join(o.get("text", "") for c in nb.cells if c.cell_type == "code" for o in c.get("outputs", []))
-    assert paden["html"].stat().st_size > 10_000 and paden["model"].exists()
+    assert paden["html"].stat().st_size > 10_000 and paden["model"].exists() and paden["contract"].exists()
+    assert "api_gelijk_aan_model" in json.dumps([c.get("outputs", []) for c in nb.cells if c.cell_type == "code"])
     model = joblib.load(paden["model"])
     o = patient()
     voorspelling = model.predict_proba(o.df.drop(columns=[o.target]).head(3))

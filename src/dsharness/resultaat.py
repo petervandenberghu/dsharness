@@ -85,7 +85,16 @@ def maak_notebook(v: Verslag) -> nbf.NotebookNode:
         code("e = r.lab.eind\nassert abs(e.test - v.eind.test) < 1e-6\npd.Series({'test': e.test, 'baseline': e.test_baseline, "
              "'cv_gemiddelde': e.cv_gemiddelde, 'cv_sd': e.cv_sd, **e.extra}).round(4)" if e else "print('Geen eindtest')"),
         md("## Model card\n\n" + model_card(v).split("\n", 1)[1]),
-        code("import joblib\njoblib.dump(r.lab.eindmodel, 'model.joblib')\nprint('Opgeslagen: model.joblib')" if e else "pass"),
+        md("## Deploy\n\nDe harness schreef `model.joblib` (de pipeline, gefit op train), `contract.json` (wat het model als invoer "
+           "verwacht) en `voorbeeld.json`. Experimenten, eindtest en model staan ook in MLflow (`mlflow.db`).\n\n"
+           "```\nuv run dsharness serve .            # API op http://127.0.0.1:8000/docs\n"
+           "uv run mlflow ui --backend-store-uri sqlite:///mlflow.db\n```\n\n"
+           "De rooktest hieronder start de API, voorspelt op de voorbeeldrijen en controleert dat de API hetzelfde antwoordt "
+           "als het model, en dat ongeldige invoer wordt geweigerd." if e else "## Deploy\n\n_Geen model: er is geen eindtest gedaan._"),
+        code("import json\nfrom dsharness.contract import Contract\nfrom dsharness.serve import rooktest\n\n"
+             "c = Contract.lees('contract.json')\n"
+             "display(pd.DataFrame([k.model_dump() for k in c.kolommen]))\n"
+             "uit = rooktest('.')\nassert uit['api_gelijk_aan_model'] and uit['lege_rij_geweigerd'], uit\nuit" if e else "pass"),
         md("## Vragen aan de PO\n\n" + (_tabel(["vraag", "antwoord"], [[q, a] for q, a in v.po_vragen]) if v.po_vragen else "_Geen._")),
     ]
     nb = nbf.v4.new_notebook(cells=cellen)
@@ -93,13 +102,34 @@ def maak_notebook(v: Verslag) -> nbf.NotebookNode:
     return nb
 
 
-def maak_resultaat(v: Verslag, map: str | Path = "resultaat", *, uitvoeren: bool = True) -> dict[str, Path]:
-    """Schrijf verslag, model card en notebook; voer het notebook uit (papermill) en exporteer naar HTML."""
+def maak_resultaat(v: Verslag, map: str | Path = "resultaat", *, uitvoeren: bool = True, mlflow: bool = True) -> dict[str, Path]:
+    """Reproduceer, schrijf model, contract, verslag en model card; log naar MLflow; voer het notebook uit en maak HTML."""
+    import json
+
+    import joblib
+
+    from .contract import maak_contract, voorbeeld
+    from .verslag import reproduceer
+
     map = Path(map)
     map.mkdir(parents=True, exist_ok=True)
+    r = reproduceer(v)
+    if r.verschillen:
+        raise ValueError("Het verslag is niet te reproduceren: " + "; ".join(r.verschillen))
     paden = {"verslag": map / "verslag.json", "model_card": map / "model_card.md", "notebook": map / "07_resultaat.ipynb"}
     v.schrijf(paden["verslag"])
     paden["model_card"].write_text(model_card(v), encoding="utf-8")
+    if r.lab.eindmodel is not None:
+        df = r.lab.train_df()
+        contract = maak_contract(df, r.plan.features(df), v.target, v.taak)
+        paden["model"], paden["contract"], paden["voorbeeld"] = map / "model.joblib", map / "contract.json", map / "voorbeeld.json"
+        joblib.dump(r.lab.eindmodel, paden["model"])
+        contract.schrijf(paden["contract"])
+        paden["voorbeeld"].write_text(json.dumps(voorbeeld(contract, df), ensure_ascii=False, indent=1), encoding="utf-8")
+        if mlflow:
+            from .tracking import log_naar_mlflow
+            log_naar_mlflow(v, r, map)
+            paden["mlflow"] = map / "mlflow.db"
     nbf.write(maak_notebook(v), paden["notebook"])
     if uitvoeren:
         import papermill as pm
@@ -108,5 +138,4 @@ def maak_resultaat(v: Verslag, map: str | Path = "resultaat", *, uitvoeren: bool
         html, _ = HTMLExporter().from_filename(str(paden["notebook"]))
         paden["html"] = map / "07_resultaat.html"
         paden["html"].write_text(html, encoding="utf-8")
-        paden["model"] = map / "model.joblib"
     return paden

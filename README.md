@@ -27,6 +27,9 @@ Met `data_policy: local_only` weigert de harness cloudmodellen.
 | `lab.py` | Voert F5 uit: cross-validatie op train met de F4-pipeline binnen elke fold |
 | `verslag.py` | Alles van een project in één JSON; `reproduceer()` bouwt de keten opnieuw op en vergelijkt de getallen |
 | `resultaat.py` | F7: notebook uit het verslag, uitgevoerd met papermill, plus HTML, model card en model.joblib |
+| `contract.py` | Datacontract uit train: fouten (weigeren) en waarschuwingen (wel voorspellen) |
+| `serve.py` / `cli.py` | FastAPI-service, rooktest en de opdracht `dsharness` |
+| `tracking.py` | MLflow: experimenten, eindtest en model-registry, lokaal in de resultaatmap |
 | `verkenner.py` | Verkenner (F3): kolomprofielen op train; NA-mechanisme pas na NA-patroon én een vraag aan de PO |
 | `reviewer.py` | Reviewer: vaste regels in code plus optioneel een LLM, die alleen strenger mag zijn |
 | `workflow.py` | Volgorde en gates in gewone Python: review → herzien → PO → uitvoeren |
@@ -38,6 +41,21 @@ Met `data_policy: local_only` weigert de harness cloudmodellen.
 Na de eindtest maakt de harness in `resultaat/`: `07_resultaat.ipynb` (uitgevoerd) en `07_resultaat.html`, `model_card.md`,
 `verslag.json` en `model.joblib`. Het notebook reproduceert de hele keten uit het verslag en controleert dat dezelfde
 getallen terugkomen; klopt dat niet, dan faalt het. De tests controleren ook dat een vervalst verslag wordt betrapt.
+
+## Deploy en MLflow (versie 2)
+F7 schrijft naast het notebook ook `contract.json` (wat het model als invoer verwacht, uit train), `voorbeeld.json`
+en een MLflow-database met alle experimenten, de eindtest en het model in de registry.
+```
+uv run dsharness serve resultaat            # API op http://127.0.0.1:8000/docs
+uv run dsharness rooktest resultaat         # API geeft hetzelfde als het model, ongeldige invoer wordt geweigerd
+uv run mlflow ui --backend-store-uri sqlite:///resultaat/mlflow.db
+docker build -f deploy/Dockerfile -t dsharness-api . && docker run --rm -p 8000:8000 dsharness-api
+```
+- `POST /voorspel` met `{"rijen": [...]}`. Een ontbrekende kolom of een verkeerd type geeft HTTP 422; een onbekende
+  categorie, een waarde buiten het bereik van train of een ontbrekende waarde geeft een waarschuwing, wel een voorspelling.
+- Het resultaat-notebook draait de rooktest mee. De container bevat alleen wat nodig is om te voorspellen
+  (versies vast in `deploy/requirements-serve.txt`).
+- MLflow slaat het model op met cloudpickle, net als `model.joblib`: laad het alleen uit een bron die je vertrouwt.
 
 ## Tests en evals
 ```
